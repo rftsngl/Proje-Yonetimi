@@ -16,6 +16,6 @@ export const env = {
   mysqlHost: process.env.MYSQL_HOST || '127.0.0.1',
   mysqlPort: toNumber(process.env.MYSQL_PORT, 3306),
   mysqlUser: process.env.MYSQL_USER || 'root',
-  mysqlPassword: process.env.MYSQL_PASSWORD || 'Cll353180',
+  mysqlPassword: process.env.MYSQL_PASSWORD || 'kendi_mySQL_sifrenizi_girin',
   mysqlDatabase: process.env.MYSQL_DATABASE || 'proje_yonetimi_app',
 };
