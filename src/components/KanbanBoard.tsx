@@ -1,19 +1,29 @@
+import { useState } from 'react';
 import { MoreHorizontal, Plus, Clock, MessageSquare, Paperclip } from 'lucide-react';
 import { Task } from '../types';
+import { User } from '../types';
 
 interface KanbanBoardProps {
   tasks: Task[];
   showHeader?: boolean;
   onAddTask?: () => void;
   onTaskClick?: (task: Task) => void;
+  onMoveTask?: (taskId: string, status: Task['status']) => void | Promise<void>;
+  currentUser?: User;
 }
 
-export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTaskClick }: KanbanBoardProps) {
+export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTaskClick, onMoveTask, currentUser }: KanbanBoardProps) {
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [hoveredColumnId, setHoveredColumnId] = useState<Task['status'] | null>(null);
+
   const columns = [
     { id: 'Yapılacak', title: 'Yapılacaklar' },
     { id: 'Devam Ediyor', title: 'Devam Edenler' },
     { id: 'Tamamlandı', title: 'Tamamlananlar' },
+    { id: 'Gecikti', title: 'Gecikenler' },
   ] as const;
+
+  const canMoveTask = (task: Task) => Boolean(currentUser && (currentUser.role === 'Admin' || task.assignees.includes(currentUser.id)));
 
   return (
     <div className="animate-in slide-in-from-bottom-4 space-y-6 duration-500 fade-in">
@@ -22,6 +32,7 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Görevler (Kanban)</h1>
             <p className="mt-1 text-slate-500">Proje süreçlerini ve görev durumlarını buradan takip edebilirsiniz.</p>
+            <p className="mt-1 text-xs font-medium text-slate-400">Kartları yalnızca admin veya göreve atanmış kullanıcılar taşıyabilir.</p>
           </div>
           <button
             onClick={onAddTask}
@@ -33,11 +44,43 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
         </div>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((column) => {
           const columnTasks = tasks.filter((task) => task.status === column.id);
           return (
-            <div key={column.id} className="flex min-h-[500px] flex-col gap-4 rounded-2xl bg-slate-100/50 p-4">
+            <div
+              key={column.id}
+              onDragOver={(event) => {
+                event.preventDefault();
+                setHoveredColumnId(column.id);
+              }}
+              onDragLeave={() => {
+                if (hoveredColumnId === column.id) {
+                  setHoveredColumnId(null);
+                }
+              }}
+              onDrop={async (event) => {
+                event.preventDefault();
+                setHoveredColumnId(null);
+
+                if (!draggingTaskId || draggingTaskId === '') {
+                  return;
+                }
+
+                const draggedTask = tasks.find((task) => task.id === draggingTaskId);
+
+                if (!draggedTask || !onMoveTask || draggedTask.status === column.id || !canMoveTask(draggedTask)) {
+                  setDraggingTaskId(null);
+                  return;
+                }
+
+                await onMoveTask(draggedTask.id, column.id);
+                setDraggingTaskId(null);
+              }}
+              className={`flex min-h-[500px] flex-col gap-4 rounded-2xl bg-slate-100/50 p-4 transition-all ${
+                hoveredColumnId === column.id ? 'ring-2 ring-indigo-200 ring-offset-2 ring-offset-slate-50' : ''
+              }`}
+            >
               <div className="flex items-center justify-between px-2">
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-slate-800">{column.title}</h3>
@@ -55,7 +98,19 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
                   <div
                     key={task.id}
                     onClick={() => onTaskClick?.(task)}
-                    className="group cursor-pointer rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md"
+                    draggable={canMoveTask(task)}
+                    onDragStart={() => {
+                      if (canMoveTask(task)) {
+                        setDraggingTaskId(task.id);
+                      }
+                    }}
+                    onDragEnd={() => {
+                      setDraggingTaskId(null);
+                      setHoveredColumnId(null);
+                    }}
+                    className={`group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md ${
+                      canMoveTask(task) ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                    } ${draggingTaskId === task.id ? 'opacity-50' : ''}`}
                   >
                     <div className="mb-3 flex items-start justify-between">
                       <span

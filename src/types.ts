@@ -56,9 +56,12 @@ export interface Task {
   id: string;
   title: string;
   description: string;
+  parentTaskId?: string | null;
+  wbsCode?: string;
   priority: 'Yüksek' | 'Orta' | 'Düşük';
   status: 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti';
   date: string;
+  startDate?: string | null;
   dueDate?: string | null;
   assignees: string[];
   assigneeNames: string[];
@@ -137,7 +140,9 @@ export interface CreateTaskPayload {
   title: string;
   description: string;
   projectId: string;
+  parentTaskId?: string;
   assigneeIds: string[];
+  startDate?: string;
   dueDate?: string;
   priority: Task['priority'];
 }
@@ -182,6 +187,37 @@ export interface RegisterPayload {
   name: string;
   email: string;
   password: string;
-  role: AppRole;
   department?: string;
+}
+
+export interface UpdateUserRolePayload {
+  role: AppRole;
+}
+
+export interface UpdateUserDepartmentPayload {
+  department: string;
+}
+
+export interface UserAuditLogItem {
+  id: string;
+  actorUserId: string;
+  actorName: string;
+  targetUserId: string;
+  targetName: string;
+  action: 'role_update' | 'department_update';
+  oldValue?: string | null;
+  newValue?: string | null;
+  createdAt: string;
+}
+
+export interface UserAuditLogsResponse {
+  items: UserAuditLogItem[];
+}
+
+export interface TaskTreeItem extends Task {
+  children: TaskTreeItem[];
+}
+
+export interface TaskTreeResponse {
+  items: TaskTreeItem[];
 }

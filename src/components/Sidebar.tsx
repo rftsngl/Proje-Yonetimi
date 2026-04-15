@@ -41,12 +41,21 @@ export default function Sidebar({ isOpen, onClose, activeTab, onTabChange, curre
       >
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between p-6">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600">
-                <Briefcase className="h-5 w-5 text-white" />
-              </div>
-              <span className="text-xl font-bold tracking-tight text-gray-900">ProjeX</span>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onTabChange('dashboard');
+                onClose();
+              }}
+              className="mx-auto flex w-full max-w-[196px] items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 transition-all hover:border-indigo-200 hover:bg-indigo-50/60"
+            >
+              <img
+                src="/logo.jpg"
+                alt="Zodiac logo"
+                className="h-8 w-8 rounded-lg object-cover"
+              />
+              <span className="text-xl font-bold tracking-tight text-gray-900">Zodiac</span>
+            </button>
             <button onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 lg:hidden">
               <X className="h-5 w-5" />
             </button>

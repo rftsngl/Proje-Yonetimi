@@ -29,16 +29,22 @@ import {
   deleteProject,
   deleteTask,
   deleteTaskComment,
+  getAdminAuditLogs,
   getBootstrapData,
+  getTaskTree,
   markAllNotificationsRead,
   removeTaskAssignee,
   updateTaskComment,
   updateProject,
   updateTask,
+  updateTaskStatus,
+  updateUserDepartment,
+  updateUserRole,
 } from './services/dashboard';
 import { clearStoredAuthToken, getStoredAuthToken } from './services/session';
 import {
   AppBootstrap,
+  AppRole,
   CreateCalendarEventPayload,
   CreateProjectPayload,
   CreateTaskPayload,
@@ -46,6 +52,8 @@ import {
   Project,
   RegisterPayload,
   Task,
+  TaskTreeItem,
+  UserAuditLogItem,
 } from './types';
 
 export default function App() {
@@ -53,6 +61,7 @@ export default function App() {
   const [taskView, setTaskView] = useState<'kanban' | 'list'>('kanban');
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [presetParentTask, setPresetParentTask] = useState<Task | null>(null);
   const [isTaskDetailModalOpen, setIsTaskDetailModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -66,6 +75,11 @@ export default function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [updatingUserRoleId, setUpdatingUserRoleId] = useState<string | null>(null);
+  const [updatingUserDepartmentId, setUpdatingUserDepartmentId] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<UserAuditLogItem[]>([]);
+  const [isAuditLogsLoading, setIsAuditLogsLoading] = useState(false);
+  const [taskTreeTasks, setTaskTreeTasks] = useState<Task[] | null>(null);
 
   const refreshData = async () => {
     setError(null);
@@ -159,6 +173,11 @@ export default function App() {
     setIsTaskDetailModalOpen(true);
   };
 
+  const handleNavigateToTask = (task: Task) => {
+    setSelectedTask(task);
+    setIsTaskDetailModalOpen(true);
+  };
+
   const handleProjectClick = (project: Project) => {
     setSelectedProject(project);
     setIsProjectDetailModalOpen(true);
@@ -166,12 +185,17 @@ export default function App() {
 
   const handleCreateTask = async (payload: CreateTaskPayload) => {
     const updatedData = editingTask
-      ? await updateTask(editingTask.id, { ...payload, status: editingTask.status })
+      ? await updateTask(editingTask.id, {
+          ...payload,
+          status: editingTask.status,
+          parentTaskId: payload.parentTaskId ?? editingTask.parentTaskId ?? undefined,
+        })
       : await createTask(payload);
 
     setData(updatedData);
     setIsTaskModalOpen(false);
     setEditingTask(null);
+    setPresetParentTask(null);
   };
 
   const handleEditTask = (task: Task) => {
@@ -226,11 +250,88 @@ export default function App() {
     setSelectedTask(updatedData.tasks.find((item) => item.id === task.id) || null);
   };
 
+  const handleMoveTaskStatus = async (taskId: string, status: Task['status']) => {
+    try {
+      const updatedData = await updateTaskStatus(taskId, status);
+      setData(updatedData);
+    } catch (moveError) {
+      window.alert(moveError instanceof Error ? moveError.message : 'Görev durumu güncellenemedi.');
+    }
+  };
+
   const handleDeleteTaskComment = async (task: Task, commentId: string) => {
     const updatedData = await deleteTaskComment(task.id, commentId);
     setData(updatedData);
     setSelectedTask(updatedData.tasks.find((item) => item.id === task.id) || null);
   };
+
+  const flattenTaskTree = (items: TaskTreeItem[]): Task[] => {
+    const flattened: Task[] = [];
+
+    const walk = (nodes: TaskTreeItem[], parentTaskId: string | null = null) => {
+      for (const node of nodes) {
+        const { children, ...task } = node;
+        flattened.push({
+          ...task,
+          parentTaskId: parentTaskId || task.parentTaskId || null,
+        });
+        walk(children || [], node.id);
+      }
+    };
+
+    walk(items, null);
+    return flattened;
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== 'tasks' || taskView !== 'list') {
+      setTaskTreeTasks(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadTaskTree = async () => {
+      const tasksForScope = taskProjectFilter
+        ? data.tasks.filter((task) => task.projectId === taskProjectFilter.id)
+        : data.tasks;
+
+      const projectIds = taskProjectFilter
+        ? [taskProjectFilter.id]
+        : Array.from(new Set(tasksForScope.map((task) => task.projectId)));
+
+      if (!projectIds.length) {
+        if (!cancelled) {
+          setTaskTreeTasks([]);
+        }
+        return;
+      }
+
+      try {
+        const responses = await Promise.all(
+          projectIds.map(async (projectId) => ({
+            projectId,
+            result: await getTaskTree(projectId),
+          })),
+        );
+
+        const merged = responses.flatMap(({ result }) => flattenTaskTree(result.items));
+        if (!cancelled) {
+          setTaskTreeTasks(merged);
+        }
+      } catch {
+        if (!cancelled) {
+          setTaskTreeTasks(null);
+        }
+      }
+    };
+
+    void loadTaskTree();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, data.tasks, isAuthenticated, taskProjectFilter, taskView]);
 
   const handleCreateProject = async (payload: CreateProjectPayload) => {
     const updatedData = editingProject
@@ -288,11 +389,83 @@ export default function App() {
     setIsProjectDetailModalOpen(false);
   };
 
+  const handleDashboardStatNavigation = (targetTab: 'projects' | 'tasks') => {
+    if (targetTab === 'tasks') {
+      setTaskProjectFilter(null);
+    }
+
+    setActiveTab(targetTab);
+  };
+
   const handleAddProjectMember = async (project: Project, userId: string) => {
     const updatedData = await addProjectMember(project.id, userId);
     setData(updatedData);
     setSelectedProject(updatedData.projects.find((item) => item.id === project.id) || null);
   };
+
+  const handleUpdateTeamMemberRole = async (userId: string, role: AppRole) => {
+    try {
+      setUpdatingUserRoleId(userId);
+      const updatedData = await updateUserRole(userId, { role });
+      setData(updatedData);
+      if (data.permissions.canManageTeam) {
+        const response = await getAdminAuditLogs(100);
+        setAuditLogs(response.items);
+      }
+    } catch (updateError) {
+      window.alert(updateError instanceof Error ? updateError.message : 'Kullanici rolu guncellenemedi.');
+    } finally {
+      setUpdatingUserRoleId(null);
+    }
+  };
+
+  const handleUpdateTeamMemberDepartment = async (userId: string, department: string) => {
+    try {
+      setUpdatingUserDepartmentId(userId);
+      const updatedData = await updateUserDepartment(userId, { department });
+      setData(updatedData);
+      if (data.permissions.canManageTeam) {
+        const response = await getAdminAuditLogs(100);
+        setAuditLogs(response.items);
+      }
+    } catch (updateError) {
+      window.alert(updateError instanceof Error ? updateError.message : 'Kullanici departmani guncellenemedi.');
+    } finally {
+      setUpdatingUserDepartmentId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (!isAuthenticated || activeTab !== 'team' || !data.permissions.canManageTeam) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadAuditLogs = async () => {
+      try {
+        setIsAuditLogsLoading(true);
+        const response = await getAdminAuditLogs(100);
+        if (!cancelled) {
+          setAuditLogs(response.items);
+        }
+      } catch {
+        if (!cancelled) {
+          setAuditLogs([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsAuditLogsLoading(false);
+        }
+      }
+    };
+
+    void loadAuditLogs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, data.permissions.canManageTeam, isAuthenticated]);
 
   const selectedTaskData = useMemo(
     () => data.tasks.find((task) => task.id === selectedTask?.id) || selectedTask,
@@ -307,6 +480,8 @@ export default function App() {
   const filteredTasks = taskProjectFilter
     ? data.tasks.filter((task) => task.projectId === taskProjectFilter.id)
     : data.tasks;
+
+  const listTasks = taskTreeTasks || filteredTasks;
 
   if (!isAuthenticated) {
     return <AuthScreen onLogin={handleLogin} onRegister={handleRegister} error={authError} isLoading={isAuthLoading} />;
@@ -357,7 +532,10 @@ export default function App() {
           </div>
           {canManageTasks && (
             <button
-              onClick={() => setIsTaskModalOpen(true)}
+              onClick={() => {
+                setPresetParentTask(null);
+                setIsTaskModalOpen(true);
+              }}
               className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 font-bold text-white shadow-lg shadow-indigo-100 transition-all active:scale-95 hover:bg-indigo-700"
             >
               <Plus className="h-5 w-5" />
@@ -368,11 +546,26 @@ export default function App() {
       </div>
 
       {taskView === 'kanban' ? (
-        <KanbanBoard tasks={filteredTasks} showHeader={false} onAddTask={canManageTasks ? () => setIsTaskModalOpen(true) : undefined} onTaskClick={handleTaskClick} />
+        <KanbanBoard
+          tasks={filteredTasks}
+          showHeader={false}
+          onAddTask={canManageTasks ? () => setIsTaskModalOpen(true) : undefined}
+          onTaskClick={handleTaskClick}
+          onMoveTask={handleMoveTaskStatus}
+          currentUser={data.currentUser}
+        />
       ) : (
         <TaskList
-          tasks={filteredTasks}
-          onAddTask={canManageTasks ? () => setIsTaskModalOpen(true) : undefined}
+          tasks={listTasks}
+          onAddTask={canManageTasks ? () => {
+            setPresetParentTask(null);
+            setIsTaskModalOpen(true);
+          } : undefined}
+          onAddSubtask={canManageTasks ? (task) => {
+            setPresetParentTask(task);
+            setEditingTask(null);
+            setIsTaskModalOpen(true);
+          } : undefined}
           onTaskClick={handleTaskClick}
           onEditTask={canManageTasks ? handleEditTask : undefined}
           onDeleteTask={canManageTasks ? handleDeleteTask : undefined}
@@ -422,12 +615,14 @@ export default function App() {
             upcomingTasks={data.tasks.slice(0, 3)}
             projectProgress={data.projectProgress}
             currentUser={data.currentUser}
+            onNavigateFromStat={handleDashboardStatNavigation}
           />
         );
       case 'projects':
         return (
           <Projects
             projects={data.projects}
+            tasks={data.tasks}
             onProjectClick={handleProjectClick}
             onAddProject={canManageProjects ? () => setIsCreateProjectModalOpen(true) : undefined}
             onEditProject={canManageProjects ? handleEditProject : undefined}
@@ -444,7 +639,20 @@ export default function App() {
           />
         );
       case 'team':
-        return <Team members={data.teamMembers} canInvite={data.permissions.canInviteMembers} />;
+        return (
+          <Team
+            members={data.teamMembers}
+            canInvite={data.permissions.canInviteMembers}
+            canManageRoles={data.permissions.canManageTeam}
+            currentUserId={data.currentUser.id}
+            onUpdateMemberRole={handleUpdateTeamMemberRole}
+            updatingUserRoleId={updatingUserRoleId}
+            onUpdateMemberDepartment={handleUpdateTeamMemberDepartment}
+            updatingUserDepartmentId={updatingUserDepartmentId}
+            auditLogs={auditLogs}
+            isAuditLogsLoading={isAuditLogsLoading}
+          />
+        );
       case 'notifications':
         return <Notifications notifications={data.notifications} onReadAll={handleReadAllNotifications} />;
       case 'settings':
@@ -473,11 +681,14 @@ export default function App() {
         onClose={() => {
           setIsTaskModalOpen(false);
           setEditingTask(null);
+          setPresetParentTask(null);
         }}
         onCreate={handleCreateTask}
         projects={data.projects}
+        tasks={data.tasks}
         members={data.users}
         initialTask={editingTask}
+        presetParentTask={presetParentTask}
       />
 
       <TaskDetailModal
@@ -485,8 +696,10 @@ export default function App() {
         isOpen={isTaskDetailModalOpen}
         onClose={() => setIsTaskDetailModalOpen(false)}
         users={data.users}
+        allTasks={data.tasks}
         onEdit={canManageTasks ? handleEditTask : undefined}
         onDelete={canManageTasks ? handleDeleteTask : undefined}
+        onNavigateToTask={handleNavigateToTask}
         onAddComment={handleAddTaskComment}
         onAddAssignee={canManageTasks ? handleAddTaskAssignee : undefined}
         onAddAttachment={handleAddTaskAttachment}

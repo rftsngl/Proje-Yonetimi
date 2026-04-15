@@ -44,14 +44,17 @@ CREATE TABLE IF NOT EXISTS tasks (
   id VARCHAR(32) PRIMARY KEY,
   title VARCHAR(160) NOT NULL,
   description TEXT NOT NULL,
+  parent_task_id VARCHAR(32) DEFAULT NULL,
   priority ENUM('Yüksek', 'Orta', 'Düşük') NOT NULL DEFAULT 'Orta',
   status ENUM('Yapılacak', 'Devam Ediyor', 'Tamamlandı', 'Gecikti') NOT NULL DEFAULT 'Yapılacak',
+  start_date DATE DEFAULT NULL,
   due_date DATE DEFAULT NULL,
   project_id VARCHAR(32) NOT NULL,
   comments_count INT NOT NULL DEFAULT 0,
   attachments_count INT NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_tasks_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+  CONSTRAINT fk_tasks_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  CONSTRAINT fk_tasks_parent FOREIGN KEY (parent_task_id) REFERENCES tasks(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS task_assignees (
@@ -114,16 +117,26 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS user_audit_logs (
+  id VARCHAR(32) PRIMARY KEY,
+  actor_user_id VARCHAR(32) NOT NULL,
+  target_user_id VARCHAR(32) NOT NULL,
+  action ENUM('role_update', 'department_update') NOT NULL,
+  old_value VARCHAR(191) DEFAULT NULL,
+  new_value VARCHAR(191) DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 `;
 
 const baseSeedStatements = [
   `INSERT IGNORE INTO users (id, name, avatar, role, email, status, last_active, department) VALUES
-    ('user1', 'Celal Halilov', 'user1', 'Admin', 'celal@projex.com', 'Online', 'Şimdi', 'Yönetim'),
-    ('user2', 'Ayşe Kaya', 'user2', 'Senior Developer', 'ayse@projex.com', 'Online', '2 dk önce', 'Yazılım'),
-    ('user3', 'Mehmet Öz', 'user3', 'UI/UX Designer', 'mehmet@projex.com', 'Busy', '10 dk önce', 'Tasarım'),
-    ('user4', 'Zeynep Ak', 'user4', 'QA Engineer', 'zeynep@projex.com', 'Offline', '1 saat önce', 'Yazılım'),
-    ('user5', 'Can Demir', 'user5', 'Frontend Developer', 'can@projex.com', 'Online', '5 dk önce', 'Yazılım'),
-    ('user6', 'Selin Yılmaz', 'user6', 'Product Manager', 'selin@projex.com', 'Online', 'Şimdi', 'Ürün')`,
+    ('user1', 'Celal Halilov', 'user1', 'Admin', 'celal@zodiac.com', 'Online', 'Şimdi', 'Yönetim'),
+    ('user2', 'Ayşe Kaya', 'user2', 'Senior Developer', 'ayse@zodiac.com', 'Online', '2 dk önce', 'Yazılım'),
+    ('user3', 'Mehmet Öz', 'user3', 'UI/UX Designer', 'mehmet@zodiac.com', 'Busy', '10 dk önce', 'Tasarım'),
+    ('user4', 'Zeynep Ak', 'user4', 'QA Engineer', 'zeynep@zodiac.com', 'Offline', '1 saat önce', 'Yazılım'),
+    ('user5', 'Can Demir', 'user5', 'Frontend Developer', 'can@zodiac.com', 'Online', '5 dk önce', 'Yazılım'),
+    ('user6', 'Selin Yılmaz', 'user6', 'Product Manager', 'selin@zodiac.com', 'Online', 'Şimdi', 'Ürün')`,
   `INSERT IGNORE INTO projects (id, name, description, manager_id, progress, start_date, end_date, status, category, theme_color) VALUES
     ('PRJ-001', 'E-Ticaret Mobil Uygulama', 'Yeni nesil alışveriş deneyimi için React Native tabanlı mobil uygulama geliştirme süreci.', 'user1', 75, '2026-03-01', '2026-04-08', 'Aktif', 'Mobil Geliştirme', 'bg-indigo-600'),
     ('PRJ-002', 'Kurumsal Web Sitesi', 'Şirketin dijital varlığını güçlendirmek amacıyla modern ve responsive web sitesi tasarımı.', 'user2', 40, '2026-03-05', '2026-05-11', 'Aktif', 'Web Tasarım', 'bg-blue-500'),
@@ -205,6 +218,8 @@ export const initializeDatabase = async () => {
   await ensureColumnExists('task_attachments', 'file_size_bytes', 'BIGINT DEFAULT NULL');
   await ensureColumnExists('task_attachments', 'file_path', 'VARCHAR(255) DEFAULT NULL');
   await ensureColumnExists('users', 'password_hash', 'VARCHAR(255) DEFAULT NULL');
+  await ensureColumnExists('tasks', 'parent_task_id', 'VARCHAR(32) DEFAULT NULL');
+  await ensureColumnExists('tasks', 'start_date', 'DATE DEFAULT NULL');
 
   const [rows] = await pool.query<(RowDataPacket & { total: number })[]>('SELECT COUNT(*) AS total FROM users');
   if (!rows[0]?.total) {

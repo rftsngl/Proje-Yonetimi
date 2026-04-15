@@ -1,13 +1,71 @@
 import { Filter, Mail, MoreVertical, Search, UserPlus } from 'lucide-react';
 import { motion } from 'motion/react';
-import { TeamMember } from '../types';
+import { useMemo, useState } from 'react';
+import { AppRole, TeamMember, UserAuditLogItem } from '../types';
+import { DEPARTMENTS } from '../lib/departments';
+
+const ROLE_OPTIONS: AppRole[] = [
+  'Admin',
+  'Product Manager',
+  'Senior Developer',
+  'Frontend Developer',
+  'UI/UX Designer',
+  'QA Engineer',
+];
 
 interface TeamProps {
   members: TeamMember[];
   canInvite?: boolean;
+  canManageRoles?: boolean;
+  currentUserId?: string;
+  onUpdateMemberRole?: (userId: string, role: AppRole) => Promise<void>;
+  updatingUserRoleId?: string | null;
+  onUpdateMemberDepartment?: (userId: string, department: string) => Promise<void>;
+  updatingUserDepartmentId?: string | null;
+  auditLogs?: UserAuditLogItem[];
+  isAuditLogsLoading?: boolean;
 }
 
-export default function Team({ members, canInvite }: TeamProps) {
+export default function Team({
+  members,
+  canInvite,
+  canManageRoles,
+  currentUserId,
+  onUpdateMemberRole,
+  updatingUserRoleId,
+  onUpdateMemberDepartment,
+  updatingUserDepartmentId,
+  auditLogs = [],
+  isAuditLogsLoading,
+}: TeamProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
+
+  const filteredMembers = useMemo(() => {
+    return members.filter((member) => {
+      const matchesSearch =
+        !searchQuery ||
+        member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        member.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        member.department?.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesDepartment = !selectedDepartment || member.department === selectedDepartment;
+
+      return matchesSearch && matchesDepartment;
+    });
+  }, [members, searchQuery, selectedDepartment]);
+
+  const formatAuditAction = (action: UserAuditLogItem['action']) =>
+    action === 'role_update' ? 'Rol Güncelleme' : 'Departman Güncelleme';
+
+  const formatAuditTime = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+    return parsed.toLocaleString('tr-TR');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
@@ -31,26 +89,39 @@ export default function Team({ members, canInvite }: TeamProps) {
           <input
             type="text"
             placeholder="İsim, e-posta veya departman ara..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
         <div className="flex items-center gap-2">
-          <button className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-600 transition-all hover:bg-slate-50">
+          <button
+            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-600 transition-all hover:bg-slate-50"
+            onClick={() => {
+              setSearchQuery('');
+              setSelectedDepartment('');
+            }}
+          >
             <Filter className="h-4 w-4" />
-            <span>Filtrele</span>
+            <span>Temizle</span>
           </button>
-          <select className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-600 transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
-            <option>Tüm Departmanlar</option>
-            <option>Yazılım</option>
-            <option>Tasarım</option>
-            <option>Yönetim</option>
-            <option>Ürün</option>
+          <select
+            value={selectedDepartment}
+            onChange={(e) => setSelectedDepartment(e.target.value)}
+            className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 font-semibold text-slate-600 transition-all focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          >
+            <option value="">Tüm Departmanlar</option>
+            {DEPARTMENTS.map((dept) => (
+              <option key={dept} value={dept}>
+                {dept}
+              </option>
+            ))}
           </select>
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {members.map((member, index) => (
+        {filteredMembers.map((member, index) => (
           <motion.div
             key={member.id}
             initial={{ opacity: 0, y: 20 }}
@@ -83,6 +154,51 @@ export default function Team({ members, canInvite }: TeamProps) {
               </div>
             </div>
 
+            {canManageRoles && onUpdateMemberRole && onUpdateMemberDepartment && (
+              <div className="mt-4 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rol Atama</p>
+                <select
+                  value={member.role}
+                  disabled={member.id === currentUserId || updatingUserRoleId === member.id}
+                  onChange={(event) => {
+                    const nextRole = event.target.value as AppRole;
+                    if (nextRole !== member.role) {
+                      void onUpdateMemberRole(member.id, nextRole);
+                    }
+                  }}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
+                >
+                  {ROLE_OPTIONS.map((role) => (
+                    <option key={role} value={role}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Departman</p>
+                <select
+                  value={member.department}
+                  disabled={member.id === currentUserId || updatingUserDepartmentId === member.id}
+                  onChange={(event) => {
+                    const nextDepartment = event.target.value;
+                    if (nextDepartment !== member.department) {
+                      void onUpdateMemberDepartment(member.id, nextDepartment);
+                    }
+                  }}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:bg-slate-100"
+                >
+                  {DEPARTMENTS.map((department) => (
+                    <option key={department} value={department}>
+                      {department}
+                    </option>
+                  ))}
+                </select>
+                {member.id === currentUserId && (
+                  <p className="text-[11px] text-slate-500">Kendi rol ve departmanınızı buradan değiştiremezsiniz.</p>
+                )}
+              </div>
+            )}
+
             <div className="mt-6 grid grid-cols-2 gap-4 border-y border-slate-50 py-4">
               <div className="text-center">
                 <p className="text-xl font-bold text-slate-900">{member.projectsCount}</p>
@@ -106,6 +222,48 @@ export default function Team({ members, canInvite }: TeamProps) {
           </motion.div>
         ))}
       </div>
+
+      {canManageRoles && (
+        <div className="space-y-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Yönetim İşlem Geçmişi</h2>
+            <p className="mt-1 text-sm text-slate-500">Rol ve departman değişikliklerinin kayıtları.</p>
+          </div>
+
+          {isAuditLogsLoading ? (
+            <p className="text-sm text-slate-500">Kayıtlar yükleniyor...</p>
+          ) : auditLogs.length === 0 ? (
+            <p className="text-sm text-slate-500">Henüz kayıt yok.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 text-left text-xs uppercase tracking-wide text-slate-400">
+                    <th className="px-3 py-2 font-semibold">Zaman</th>
+                    <th className="px-3 py-2 font-semibold">İşlemi Yapan</th>
+                    <th className="px-3 py-2 font-semibold">Hedef Kullanıcı</th>
+                    <th className="px-3 py-2 font-semibold">İşlem</th>
+                    <th className="px-3 py-2 font-semibold">Eski</th>
+                    <th className="px-3 py-2 font-semibold">Yeni</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLogs.map((item) => (
+                    <tr key={item.id} className="border-b border-slate-50 text-slate-700">
+                      <td className="whitespace-nowrap px-3 py-2">{formatAuditTime(item.createdAt)}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{item.actorName}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{item.targetName}</td>
+                      <td className="whitespace-nowrap px-3 py-2">{formatAuditAction(item.action)}</td>
+                      <td className="whitespace-nowrap px-3 py-2 text-slate-500">{item.oldValue || '-'}</td>
+                      <td className="whitespace-nowrap px-3 py-2 font-medium text-indigo-600">{item.newValue || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

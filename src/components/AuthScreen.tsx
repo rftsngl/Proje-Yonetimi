@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { AppRole, LoginPayload, RegisterPayload } from '../types';
-import { Briefcase, Lock, Mail, User, UserPlus } from 'lucide-react';
+import { Lock, Mail, User, UserPlus } from 'lucide-react';
+import { DEPARTMENTS } from '../lib/departments';
 
 interface AuthScreenProps {
   onLogin: (payload: LoginPayload) => Promise<void>;
@@ -25,7 +26,6 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
     name: '',
     email: '',
     password: '',
-    role: 'Frontend Developer',
     department: 'Yazılım',
   });
 
@@ -47,8 +47,12 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-8 rounded-[36px] border border-white/70 bg-white/70 p-8 shadow-2xl shadow-indigo-100 backdrop-blur-xl lg:p-12">
           <div className="inline-flex items-center gap-3 rounded-full bg-slate-900 px-4 py-2 text-sm font-bold text-white">
-            <Briefcase className="h-4 w-4" />
-            ProjeX Workspace
+            <img
+              src="/logo.jpg"
+              alt="Zodiac logo"
+              className="h-5 w-5 rounded-full object-cover"
+            />
+            Zodiac Workspace
           </div>
           <div className="space-y-4">
             <h1 className="max-w-xl text-4xl font-black leading-tight text-slate-900 lg:text-5xl">
@@ -114,7 +118,7 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
                     value={loginForm.email}
                     onChange={(event) => setLoginForm((current) => ({ ...current, email: event.target.value }))}
                     className="w-full rounded-2xl border border-slate-200 px-11 py-3 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    placeholder="ornek@projex.com"
+                    placeholder="ornek@zodiac.com"
                     required
                   />
                 </div>
@@ -155,6 +159,9 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
               className="space-y-4"
               onSubmit={async (event) => {
                 event.preventDefault();
+                if (!registerForm.department) {
+                  return;
+                }
                 await onRegister(registerForm);
               }}
             >
@@ -183,7 +190,7 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
                       value={registerForm.email}
                       onChange={(event) => setRegisterForm((current) => ({ ...current, email: event.target.value }))}
                       className="w-full rounded-2xl border border-slate-200 px-11 py-3 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      placeholder="ornek@projex.com"
+                      placeholder="ornek@zodiac.com"
                       required
                     />
                   </div>
@@ -204,39 +211,32 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
                 </label>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block space-y-2">
-                  <span className="text-sm font-bold text-slate-700">Rol</span>
-                  <select
-                    value={registerForm.role}
-                    onChange={(event) => setRegisterForm((current) => ({ ...current, role: event.target.value as AppRole }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  >
-                    {roleOptions.map((role) => (
-                      <option key={role} value={role}>
-                        {role}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              <label className="block space-y-2">
+                <span className="text-sm font-bold text-slate-700">Departman</span>
+                <select
+                  value={registerForm.department || ''}
+                  onChange={(event) => setRegisterForm((current) => ({ ...current, department: event.target.value }))}
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  required
+                >
+                  <option value="">Departman seçin</option>
+                  {DEPARTMENTS.map((dept) => (
+                    <option key={dept} value={dept}>
+                      {dept}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-                <label className="block space-y-2">
-                  <span className="text-sm font-bold text-slate-700">Departman</span>
-                  <input
-                    type="text"
-                    value={registerForm.department}
-                    onChange={(event) => setRegisterForm((current) => ({ ...current, department: event.target.value }))}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                    placeholder="Örn. Yazılım"
-                  />
-                </label>
-              </div>
+              <p className="rounded-2xl bg-blue-50 px-4 py-3 text-xs font-medium text-blue-700">
+                Kayıt olduktan sonra, rolünüz admin tarafından atanacaktır. Lütfen sabırlı olun.
+              </p>
 
               {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-600">{error}</p>}
 
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || !registerForm.department}
                 className="flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <UserPlus className="h-4 w-4" />

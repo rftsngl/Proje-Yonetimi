@@ -26,8 +26,10 @@ interface TaskDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   users: User[];
+  allTasks: Task[];
   onEdit?: (task: Task) => void;
   onDelete?: (task: Task) => void;
+  onNavigateToTask?: (task: Task) => void;
   onAddComment?: (task: Task, content: string) => Promise<void>;
   onUpdateComment?: (task: Task, commentId: string, content: string) => Promise<void>;
   onDeleteComment?: (task: Task, commentId: string) => Promise<void>;
@@ -61,8 +63,10 @@ export default function TaskDetailModal({
   isOpen,
   onClose,
   users,
+  allTasks,
   onEdit,
   onDelete,
+  onNavigateToTask,
   onAddComment,
   onUpdateComment,
   onDeleteComment,
@@ -98,6 +102,22 @@ export default function TaskDetailModal({
 
     return users.filter((user) => !task.assignees.includes(user.id));
   }, [task, users]);
+
+  const parentTask = useMemo(() => {
+    if (!task?.parentTaskId) {
+      return null;
+    }
+
+    return allTasks.find((item) => item.id === task.parentTaskId) || null;
+  }, [allTasks, task?.parentTaskId]);
+
+  const subTasks = useMemo(() => {
+    if (!task) {
+      return [];
+    }
+
+    return allTasks.filter((item) => item.parentTaskId === task.id);
+  }, [allTasks, task]);
 
   if (!task) {
     return null;
@@ -269,6 +289,56 @@ export default function TaskDetailModal({
                   </div>
 
                   <div className="space-y-4">
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-bold uppercase tracking-widest text-slate-400">Bağlantılar</h4>
+                      <div className="space-y-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Proje</p>
+                          <p className="text-sm font-semibold text-slate-900">{task.project}</p>
+                          <p className="text-xs text-slate-500">Görev, bu proje altında takip ediliyor.</p>
+                        </div>
+
+                        <div className="h-px bg-slate-200" />
+
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Üst Görev</p>
+                          {parentTask ? (
+                            <button
+                              onClick={() => onNavigateToTask?.(parentTask)}
+                              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                            >
+                              <p className="text-sm font-bold text-slate-900">{parentTask.title}</p>
+                              <p className="mt-1 text-xs text-slate-500">{parentTask.wbsCode || parentTask.id}</p>
+                            </button>
+                          ) : (
+                            <p className="text-sm text-slate-500">Bu görev kök görevdir.</p>
+                          )}
+                        </div>
+
+                        <div className="h-px bg-slate-200" />
+
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Alt Görevler</p>
+                          {subTasks.length ? (
+                            <div className="space-y-2">
+                              {subTasks.map((childTask) => (
+                                <button
+                                  key={childTask.id}
+                                  onClick={() => onNavigateToTask?.(childTask)}
+                                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                                >
+                                  <p className="text-sm font-bold text-slate-900">{childTask.title}</p>
+                                  <p className="mt-1 text-xs text-slate-500">{childTask.wbsCode || childTask.id}</p>
+                                </button>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-slate-500">Bu görevin henüz alt görevi yok.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
                     <h3 className="text-lg font-bold text-slate-900">Aciklama</h3>
                     <p className="rounded-2xl border border-slate-100 bg-slate-50/50 p-6 leading-relaxed text-slate-600">
                       {task.description || 'Bu gorev icin henuz bir aciklama girilmemis.'}
@@ -529,6 +599,15 @@ export default function TaskDetailModal({
                     <div className="space-y-4 rounded-2xl border border-slate-100 bg-slate-50 p-6">
                       <div className="flex items-center gap-3">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm">
+                          <Calendar className="h-4 w-4 text-emerald-600" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Başlangıç</p>
+                          <p className="text-xs font-bold text-slate-900">{task.startDate || 'Belirlenmedi'}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white shadow-sm">
                           <Calendar className="h-4 w-4 text-indigo-600" />
                         </div>
                         <div>
@@ -542,7 +621,7 @@ export default function TaskDetailModal({
                         </div>
                         <div>
                           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Son Tarih</p>
-                          <p className="text-xs font-bold text-slate-900">{task.date}</p>
+                          <p className="text-xs font-bold text-slate-900">{task.dueDate || task.date || 'Belirlenmedi'}</p>
                         </div>
                       </div>
                     </div>

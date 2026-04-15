@@ -25,8 +25,8 @@ export const mockProjects: Project[] = [
 ];
 
 export const mockUsers: User[] = [
-  { id: 'user1', name: 'Celal Halilov', avatar: 'user1', role: 'Admin', email: 'celal@projex.com', status: 'Online', lastActive: 'Şimdi' },
-  { id: 'user2', name: 'Ayşe Kaya', avatar: 'user2', role: 'Senior Developer', email: 'ayse@projex.com', status: 'Online', lastActive: '2 dk önce' },
+  { id: 'user1', name: 'Celal Halilov', avatar: 'user1', role: 'Admin', email: 'celal@zodiac.com', status: 'Online', lastActive: 'Şimdi' },
+  { id: 'user2', name: 'Ayşe Kaya', avatar: 'user2', role: 'Senior Developer', email: 'ayse@zodiac.com', status: 'Online', lastActive: '2 dk önce' },
 ];
 
 export const mockTeamMembers: TeamMember[] = [
@@ -35,7 +35,7 @@ export const mockTeamMembers: TeamMember[] = [
     name: 'Celal Halilov',
     avatar: 'user1',
     role: 'Admin',
-    email: 'celal@projex.com',
+    email: 'celal@zodiac.com',
     status: 'Online',
     lastActive: 'Şimdi',
     department: 'Yönetim',

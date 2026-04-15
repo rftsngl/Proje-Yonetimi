@@ -8,15 +8,19 @@ interface CreateTaskModalProps {
   onClose: () => void;
   onCreate: (payload: CreateTaskPayload) => Promise<void>;
   projects: Project[];
+  tasks: Task[];
   members: AppUser[];
   initialTask?: Task | null;
+  presetParentTask?: Task | null;
 }
 
 const initialState = {
   title: '',
   description: '',
   projectId: '',
+  parentTaskId: '',
   assigneeId: '',
+  startDate: '',
   dueDate: '',
   priority: 'Orta' as const,
 };
@@ -28,8 +32,10 @@ export default function CreateTaskModal({
   onClose,
   onCreate,
   projects,
+  tasks,
   members,
   initialTask,
+  presetParentTask,
 }: CreateTaskModalProps) {
   const [form, setForm] = useState(initialState);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,21 +48,24 @@ export default function CreateTaskModal({
           title: initialTask.title,
           description: initialTask.description,
           projectId: initialTask.projectId,
+          parentTaskId: initialTask.parentTaskId || '',
           assigneeId: initialTask.assignees[0] || members[0]?.id || '',
+          startDate: normalizeDateInput(initialTask.startDate),
           dueDate: normalizeDateInput(initialTask.dueDate),
           priority: initialTask.priority,
         });
       } else {
         setForm({
           ...initialState,
-          projectId: projects[0]?.id || '',
+          projectId: presetParentTask?.projectId || projects[0]?.id || '',
+          parentTaskId: presetParentTask?.id || '',
           assigneeId: members[0]?.id || '',
         });
       }
       setError(null);
       setIsSubmitting(false);
     }
-  }, [isOpen, projects, members, initialTask]);
+  }, [isOpen, projects, members, initialTask, presetParentTask]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -68,7 +77,9 @@ export default function CreateTaskModal({
         title: form.title,
         description: form.description,
         projectId: form.projectId,
+        parentTaskId: form.parentTaskId || undefined,
         assigneeIds: [form.assigneeId],
+        startDate: form.startDate || undefined,
         dueDate: form.dueDate || undefined,
         priority: form.priority,
       });
@@ -79,6 +90,10 @@ export default function CreateTaskModal({
       setIsSubmitting(false);
     }
   };
+
+  const availableParentTasks = tasks.filter(
+    (task) => task.projectId === form.projectId && task.id !== initialTask?.id,
+  );
 
   return (
     <AnimatePresence>
@@ -148,12 +163,33 @@ export default function CreateTaskModal({
                   </label>
                   <select
                     value={form.projectId}
-                    onChange={(event) => setForm((current) => ({ ...current, projectId: event.target.value }))}
+                    onChange={(event) =>
+                      setForm((current) => ({ ...current, projectId: event.target.value, parentTaskId: '' }))
+                    }
                     className="w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-900 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <Briefcase className="h-4 w-4 text-slate-400" />
+                    Üst Görev (Opsiyonel)
+                  </label>
+                  <select
+                    value={form.parentTaskId}
+                    onChange={(event) => setForm((current) => ({ ...current, parentTaskId: event.target.value }))}
+                    className="w-full cursor-pointer appearance-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-900 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="">Kök görev (üst görev yok)</option>
+                    {availableParentTasks.map((task) => (
+                      <option key={task.id} value={task.id}>
+                        {task.wbsCode ? `${task.wbsCode} - ` : ''}{task.title}
                       </option>
                     ))}
                   </select>
@@ -179,6 +215,19 @@ export default function CreateTaskModal({
               </div>
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <Calendar className="h-4 w-4 text-slate-400" />
+                    Başlangıç Tarihi
+                  </label>
+                  <input
+                    type="date"
+                    value={form.startDate}
+                    onChange={(event) => setForm((current) => ({ ...current, startDate: event.target.value }))}
+                    className="w-full cursor-pointer rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-900 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
                 <div className="space-y-1.5">
                   <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
                     <Calendar className="h-4 w-4 text-slate-400" />

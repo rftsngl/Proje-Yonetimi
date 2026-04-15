@@ -27,7 +27,7 @@ export default function Layout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="flex min-h-screen overflow-x-hidden bg-gray-50">
       {/* Sidebar */}
       <Sidebar 
         isOpen={isSidebarOpen} 
@@ -39,7 +39,7 @@ export default function Layout({
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col lg:pl-64 transition-all duration-300">
+      <div className="min-w-0 flex flex-1 flex-col transition-all duration-300 lg:pl-64">
         <Header 
           onMenuClick={() => setIsSidebarOpen(true)} 
           notifications={notifications}
@@ -48,8 +48,8 @@ export default function Layout({
           onLogout={onLogout}
         />
         
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto max-w-7xl min-w-0">
             {children}
           </div>
         </main>

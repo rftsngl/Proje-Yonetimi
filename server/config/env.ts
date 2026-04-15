@@ -18,4 +18,5 @@ export const env = {
   mysqlUser: process.env.MYSQL_USER || 'root',
   mysqlPassword: process.env.MYSQL_PASSWORD || 'kendi_mySQL_sifrenizi_girin',
   mysqlDatabase: process.env.MYSQL_DATABASE || 'proje_yonetimi_app',
+  authAdminEmail: process.env.AUTH_ADMIN_EMAIL || 'admin@zodiac.com',
 };

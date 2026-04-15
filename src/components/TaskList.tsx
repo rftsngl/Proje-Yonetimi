@@ -1,9 +1,11 @@
-import { ChevronRight, Download, Edit2, Filter, MoreVertical, Plus, Search, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Edit2, Filter, MoreVertical, Plus, Search, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Task } from '../types';
 
 interface TaskListProps {
   tasks: Task[];
   onAddTask?: () => void;
+  onAddSubtask?: (task: Task) => void;
   onTaskClick?: (task: Task) => void;
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (task: Task) => void;
@@ -17,7 +19,65 @@ const statusStyles = {
   Gecikti: 'bg-rose-50 text-rose-600 border-rose-100',
 };
 
-export default function TaskList({ tasks, onAddTask, onTaskClick, onEditTask, onDeleteTask, canManageTasks }: TaskListProps) {
+export default function TaskList({
+  tasks,
+  onAddTask,
+  onAddSubtask,
+  onTaskClick,
+  onEditTask,
+  onDeleteTask,
+  canManageTasks,
+}: TaskListProps) {
+  const [collapsedTaskIds, setCollapsedTaskIds] = useState<string[]>([]);
+  const [taskScope, setTaskScope] = useState<'all' | 'root'>('all');
+
+  const { orderedTasks, childrenByParent } = useMemo(() => {
+    const taskIdSet = new Set(tasks.map((task) => task.id));
+    const childrenByParentMap = new Map<string, Task[]>();
+
+    for (const task of tasks) {
+      const parentKey = task.parentTaskId && taskIdSet.has(task.parentTaskId) ? task.parentTaskId : 'ROOT';
+      childrenByParentMap.set(parentKey, [...(childrenByParentMap.get(parentKey) || []), task]);
+    }
+
+    const flattenByHierarchy = (parentId: string, level = 0): Array<{ task: Task; level: number }> => {
+      const siblings = [...(childrenByParentMap.get(parentId) || [])].sort((left, right) =>
+        (left.wbsCode || left.id).localeCompare(right.wbsCode || right.id),
+      );
+
+      return siblings.flatMap((task) => [{ task, level }, ...flattenByHierarchy(task.id, level + 1)]);
+    };
+
+    return {
+      orderedTasks: flattenByHierarchy('ROOT'),
+      childrenByParent: childrenByParentMap,
+    };
+  }, [tasks]);
+
+  const visibleTasks = useMemo(() => {
+    return orderedTasks.filter(({ task, level }) => {
+      if (taskScope === 'root' && level > 0) {
+        return false;
+      }
+
+      let parentId = task.parentTaskId;
+      while (parentId) {
+        if (collapsedTaskIds.includes(parentId)) {
+          return false;
+        }
+        const parent = tasks.find((item) => item.id === parentId);
+        parentId = parent?.parentTaskId || null;
+      }
+      return true;
+    });
+  }, [collapsedTaskIds, orderedTasks, taskScope, tasks]);
+
+  const toggleCollapsed = (taskId: string) => {
+    setCollapsedTaskIds((current) =>
+      current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId],
+    );
+  };
+
   return (
     <div className="animate-in overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm duration-500 fade-in slide-in-from-bottom-4">
       <div className="flex flex-col gap-4 border-b border-slate-50 p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -33,6 +93,25 @@ export default function TaskList({ tasks, onAddTask, onTaskClick, onEditTask, on
         </div>
 
         <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-xl border border-slate-200 bg-slate-100 p-1">
+            <button
+              onClick={() => setTaskScope('all')}
+              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                taskScope === 'all' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Tüm Görevler
+            </button>
+            <button
+              onClick={() => setTaskScope('root')}
+              className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                taskScope === 'root' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Kök Görevler
+            </button>
+          </div>
+
           {canManageTasks && (
             <button
               onClick={onAddTask}
@@ -67,13 +146,35 @@ export default function TaskList({ tasks, onAddTask, onTaskClick, onEditTask, on
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {tasks.map((task) => (
+            {visibleTasks.map(({ task, level }) => (
               <tr key={task.id} onClick={() => onTaskClick?.(task)} className="group cursor-pointer transition-colors hover:bg-slate-50/80">
                 <td className="whitespace-nowrap px-6 py-4">
                   <span className="rounded-md bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-600">{task.id}</span>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
-                  <div className="text-sm font-semibold text-slate-900">{task.title}</div>
+                  <div className="flex items-center gap-2" style={{ paddingLeft: `${level * 14}px` }}>
+                    {childrenByParent.has(task.id) ? (
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleCollapsed(task.id);
+                        }}
+                        className="rounded p-0.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        {collapsedTaskIds.includes(task.id) ? (
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        ) : (
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    ) : (
+                      <span className="w-4" />
+                    )}
+                    {task.wbsCode && (
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{task.wbsCode}</span>
+                    )}
+                    <div className="text-sm font-semibold text-slate-900">{task.title}</div>
+                  </div>
                 </td>
                 <td className="whitespace-nowrap px-6 py-4">
                   <div className="text-sm text-slate-500">{task.project}</div>
@@ -100,6 +201,16 @@ export default function TaskList({ tasks, onAddTask, onTaskClick, onEditTask, on
                 <td className="whitespace-nowrap px-6 py-4 text-right">
                   {canManageTasks ? (
                     <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onAddSubtask?.(task);
+                        }}
+                        className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-emerald-50 hover:text-emerald-600"
+                        title="Alt Görev Ekle"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={(event) => {
                           event.stopPropagation();

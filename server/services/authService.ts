@@ -4,6 +4,18 @@ import { createEntityId } from '../utils/formatters.js';
 import { createSessionToken, hashPassword, hashSessionToken, verifyPassword } from '../utils/security.js';
 import { getPermissionsForRole } from '../utils/permissions.js';
 
+const VALID_DEPARTMENTS = [
+  'Yazılım',
+  'Tasarım',
+  'Ürün Yönetimi',
+  'Yönetim',
+  'QA / Test',
+  'DevOps',
+  'Pazarlama',
+  'HR',
+  'Genel',
+];
+
 type AuthUserRow = RowDataPacket & {
   id: string;
   name: string;
@@ -85,22 +97,29 @@ export const registerUser = async (payload: {
   name: string;
   email: string;
   password: string;
-  role: AuthUserRow['role'];
   department?: string;
 }) => {
+  const { authAdminEmail } = await import('../config/env.js').then((m) => m.env);
+  
   const existingUser = await getUserByEmail(payload.email);
   if (existingUser) {
     throw new Error('Bu e-posta adresi zaten kullanimda.');
   }
 
+  const department = payload.department || 'Genel';
+  if (!VALID_DEPARTMENTS.includes(department)) {
+    throw new Error('Geçersiz departman seçimi.');
+  }
+
   const passwordHash = await hashPassword(payload.password);
   const userId = createEntityId('USR');
   const avatarSeed = `user-${userId.toLowerCase()}`;
+  const userRole = payload.email.toLowerCase() === authAdminEmail.toLowerCase() ? 'Admin' : 'Frontend Developer';
 
   await pool.query(
     `INSERT INTO users (id, name, avatar, role, email, status, last_active, department, password_hash)
      VALUES (?, ?, ?, ?, ?, 'Online', 'Simdi', ?, ?)`,
-    [userId, payload.name, avatarSeed, payload.role, payload.email, payload.department || 'Genel', passwordHash],
+    [userId, payload.name, avatarSeed, userRole, payload.email, department, passwordHash],
   );
 
   const token = await createSession(userId);

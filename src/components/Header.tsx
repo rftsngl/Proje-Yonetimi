@@ -57,6 +57,11 @@ export default function Header({ onMenuClick, notifications, onReadAllNotificati
             <Menu className="h-6 w-6" />
           </button>
 
+          <div className="hidden items-center gap-2 sm:flex lg:hidden">
+            <img src="/logo.jpg" alt="Zodiac logo" className="h-7 w-7 rounded-md object-cover" />
+            <span className="text-sm font-bold tracking-tight text-gray-900">Zodiac</span>
+          </div>
+
           <div className="relative hidden w-full max-w-md sm:block">
             <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
               <Search className="h-5 w-5 text-gray-400" />

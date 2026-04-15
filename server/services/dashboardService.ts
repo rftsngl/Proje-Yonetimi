@@ -14,8 +14,10 @@ type TaskRow = RowDataPacket & {
   id: string;
   title: string;
   description: string;
+  parentTaskId: string | null;
   priority: 'Yüksek' | 'Orta' | 'Düşük';
   status: 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti';
+  startDate: string | null;
   dueDate: string | null;
   projectId: string;
   projectName: string;
@@ -89,9 +91,205 @@ type CalendarRow = RowDataPacket & {
   eventType: string;
 };
 
+type UserAuditLogRow = RowDataPacket & {
+  id: string;
+  actorUserId: string;
+  actorName: string;
+  targetUserId: string;
+  targetName: string;
+  action: 'role_update' | 'department_update';
+  oldValue: string | null;
+  newValue: string | null;
+  createdAt: string;
+};
+
+const VALID_APP_ROLES = [
+  'Admin',
+  'Product Manager',
+  'Senior Developer',
+  'Frontend Developer',
+  'UI/UX Designer',
+  'QA Engineer',
+] as const;
+
+const VALID_DEPARTMENTS = [
+  'Yazılım',
+  'Tasarım',
+  'Ürün Yönetimi',
+  'Yönetim',
+  'QA / Test',
+  'DevOps',
+  'Pazarlama',
+  'HR',
+  'Genel',
+] as const;
+
 const pool = getPool();
 
 const splitGrouped = (value: string | null, separator = ',') => (value ? value.split(separator).filter(Boolean) : []);
+
+const deriveParentStatus = (statuses: Array<'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti'>) => {
+  if (!statuses.length) {
+    return 'Yapılacak' as const;
+  }
+
+  if (statuses.every((status) => status === 'Tamamlandı')) {
+    return 'Tamamlandı' as const;
+  }
+
+  if (statuses.some((status) => status === 'Gecikti')) {
+    return 'Gecikti' as const;
+  }
+
+  if (statuses.some((status) => status === 'Devam Ediyor' || status === 'Tamamlandı')) {
+    return 'Devam Ediyor' as const;
+  }
+
+  return 'Yapılacak' as const;
+};
+
+const buildWbsCodeMap = (tasks: Array<{ id: string; projectId: string; parentTaskId?: string | null; dueDate?: string | null }>) => {
+  const codeMap = new Map<string, string>();
+
+  const toDateSortKey = (value?: string | Date | null) => {
+    if (!value) {
+      return '9999-12-31';
+    }
+
+    if (value instanceof Date) {
+      const year = value.getFullYear();
+      const month = String(value.getMonth() + 1).padStart(2, '0');
+      const day = String(value.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        const year = parsed.getFullYear();
+        const month = String(parsed.getMonth() + 1).padStart(2, '0');
+        const day = String(parsed.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+    }
+
+    return '9999-12-31';
+  };
+
+  const byProject = tasks.reduce<Record<string, typeof tasks>>((accumulator, task) => {
+    accumulator[task.projectId] = [...(accumulator[task.projectId] || []), task];
+    return accumulator;
+  }, {});
+
+  for (const projectTasks of Object.values(byProject)) {
+    const taskIds = new Set(projectTasks.map((task) => task.id));
+    const childrenByParent = new Map<string, typeof projectTasks>();
+
+    for (const task of projectTasks) {
+      const key = task.parentTaskId && taskIds.has(task.parentTaskId) ? task.parentTaskId : 'ROOT';
+      childrenByParent.set(key, [...(childrenByParent.get(key) || []), task]);
+    }
+
+    const sortTasks = (items: typeof projectTasks) =>
+      [...items].sort((left, right) => {
+        const leftDate = toDateSortKey(left.dueDate as string | Date | null | undefined);
+        const rightDate = toDateSortKey(right.dueDate as string | Date | null | undefined);
+        if (leftDate === rightDate) {
+          return left.id.localeCompare(right.id);
+        }
+        return leftDate.localeCompare(rightDate);
+      });
+
+    const walk = (parentId: string, prefix = '') => {
+      const siblings = sortTasks(childrenByParent.get(parentId) || []);
+      siblings.forEach((task, index) => {
+        const code = prefix ? `${prefix}.${index + 1}` : `${index + 1}`;
+        codeMap.set(task.id, code);
+        walk(task.id, code);
+      });
+    };
+
+    walk('ROOT');
+  }
+
+  return codeMap;
+};
+
+const validateTaskParentLink = async (payload: { taskId?: string; projectId: string; parentTaskId?: string | null }) => {
+  const { taskId, projectId, parentTaskId } = payload;
+
+  if (!parentTaskId) {
+    return;
+  }
+
+  if (taskId && taskId === parentTaskId) {
+    throw new Error('Bir gorev kendisini ust gorev olarak secemez.');
+  }
+
+  const [parentRows] = await pool.query<RowDataPacket[]>(
+    'SELECT id, project_id AS projectId, parent_task_id AS parentTaskId FROM tasks WHERE id = ? LIMIT 1',
+    [parentTaskId],
+  );
+
+  if (!parentRows.length) {
+    throw new Error('Secilen ust gorev bulunamadi.');
+  }
+
+  if (parentRows[0].projectId !== projectId) {
+    throw new Error('Ust gorev ayni proje icinde olmalidir.');
+  }
+
+  if (!taskId) {
+    return;
+  }
+
+  let cursor: string | null = parentTaskId;
+  while (cursor) {
+    if (cursor === taskId) {
+      throw new Error('Bu secim gorev hiyerarsisinde dongu olusturuyor.');
+    }
+
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT parent_task_id AS parentTaskId FROM tasks WHERE id = ? LIMIT 1',
+      [cursor],
+    );
+
+    if (!rows.length) {
+      break;
+    }
+
+    cursor = (rows[0].parentTaskId as string | null) || null;
+  }
+};
+
+const syncAncestorStatuses = async (taskId: string) => {
+  let [currentRows] = await pool.query<RowDataPacket[]>(
+    'SELECT parent_task_id AS parentTaskId FROM tasks WHERE id = ? LIMIT 1',
+    [taskId],
+  );
+
+  let ancestorId = currentRows[0]?.parentTaskId as string | null;
+
+  while (ancestorId) {
+    const [childRows] = await pool.query<RowDataPacket[]>(
+      'SELECT status FROM tasks WHERE parent_task_id = ?',
+      [ancestorId],
+    );
+
+    const nextStatus = deriveParentStatus(
+      childRows.map((row) => row.status as 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti'),
+    );
+
+    await pool.query('UPDATE tasks SET status = ? WHERE id = ?', [nextStatus, ancestorId]);
+
+    [currentRows] = await pool.query<RowDataPacket[]>(
+      'SELECT parent_task_id AS parentTaskId FROM tasks WHERE id = ? LIMIT 1',
+      [ancestorId],
+    );
+
+    ancestorId = currentRows[0]?.parentTaskId as string | null;
+  }
+};
 
 const formatCalendarDate = (value: string | Date) => {
   if (value instanceof Date) {
@@ -203,8 +401,10 @@ const getTasks = async () => {
         t.id,
         t.title,
         t.description,
+        t.parent_task_id AS parentTaskId,
         t.priority,
         t.status,
+        t.start_date AS startDate,
         t.due_date AS dueDate,
         p.id AS projectId,
         p.name AS projectName,
@@ -221,7 +421,7 @@ const getTasks = async () => {
     getTaskAttachments(),
   ]);
 
-  return rows[0].map((row) => {
+  const mappedTasks = rows[0].map((row) => {
     const commentsList = commentsMap[row.id] || [];
     const attachmentsList = attachmentsMap[row.id] || [];
 
@@ -229,9 +429,11 @@ const getTasks = async () => {
       id: row.id,
       title: row.title,
       description: row.description,
+      parentTaskId: row.parentTaskId,
       priority: row.priority,
       status: row.status,
-      date: formatDisplayDate(row.dueDate),
+      date: formatDisplayDate(row.dueDate || row.startDate),
+      startDate: row.startDate,
       dueDate: row.dueDate,
       assignees: splitGrouped(row.assigneeIds),
       assigneeNames: splitGrouped(row.assigneeNames, '||'),
@@ -243,6 +445,12 @@ const getTasks = async () => {
       projectId: row.projectId,
     };
   });
+
+  const wbsCodeMap = buildWbsCodeMap(mappedTasks);
+  return mappedTasks.map((task) => ({
+    ...task,
+    wbsCode: wbsCodeMap.get(task.id) || '',
+  }));
 };
 
 const getProjects = async () => {
@@ -251,7 +459,10 @@ const getProjects = async () => {
       p.id,
       p.name,
       p.description,
-      p.progress,
+      CASE
+        WHEN COALESCE(taskStats.totalTasks, 0) = 0 THEN 0
+        ELSE ROUND((COALESCE(taskStats.completedTasks, 0) / taskStats.totalTasks) * 100)
+      END AS progress,
       p.start_date AS startDate,
       p.end_date AS endDate,
       p.status,
@@ -263,6 +474,14 @@ const getProjects = async () => {
     FROM projects p
     INNER JOIN users u ON u.id = p.manager_id
     LEFT JOIN project_members pm ON pm.project_id = p.id
+    LEFT JOIN (
+      SELECT
+        project_id,
+        COUNT(*) AS totalTasks,
+        SUM(CASE WHEN status = 'Tamamlandı' THEN 1 ELSE 0 END) AS completedTasks
+      FROM tasks
+      GROUP BY project_id
+    ) taskStats ON taskStats.project_id = p.id
     GROUP BY p.id
     ORDER BY p.created_at DESC
   `);
@@ -369,7 +588,7 @@ const getProjectProgress = async () => {
 const buildStats = (projects: Awaited<ReturnType<typeof getProjects>>, tasks: Awaited<ReturnType<typeof getTasks>>) => [
   { label: 'Toplam Proje', value: String(projects.length), trend: '+8%', trendUp: true, color: 'text-indigo-600', bg: 'bg-indigo-50', iconName: 'Briefcase' },
   {
-    label: 'Aktif GÃ¶revler',
+    label: 'Aktif Görevler',
     value: String(tasks.filter((task) => task.status !== 'Tamamlandı').length),
     trend: '+12%',
     trendUp: true,
@@ -378,7 +597,7 @@ const buildStats = (projects: Awaited<ReturnType<typeof getProjects>>, tasks: Aw
     iconName: 'Clock',
   },
   {
-    label: 'Geciken GÃ¶revler',
+    label: 'Geciken Görevler',
     value: String(tasks.filter((task) => task.status === 'Gecikti').length),
     trend: '-2%',
     trendUp: false,
@@ -419,14 +638,12 @@ export const getBootstrapData = async (currentUser: {
   lastActive?: string;
   department?: string;
 }) => {
-  const [, tasks, projects, calendarEvents, teamMembers, notifications, , users] = await Promise.all([
-    getStats(),
+  const [tasks, projects, calendarEvents, teamMembers, notifications, users] = await Promise.all([
     getTasks(),
     getProjects(),
     getCalendarEvents(),
     getTeamMembers(),
     getNotifications(),
-    getProjectProgress(),
     getUsers(),
   ]);
 
@@ -670,18 +887,30 @@ export const createTask = async (payload: {
   title: string;
   description: string;
   projectId: string;
+  parentTaskId?: string;
   assigneeIds: string[];
+  startDate?: string;
   dueDate?: string;
   priority: 'Yüksek' | 'Orta' | 'Düşük';
 }) => {
   const id = createEntityId('TSK');
   const connection = await pool.getConnection();
   try {
+    await validateTaskParentLink({ projectId: payload.projectId, parentTaskId: payload.parentTaskId || null });
     await connection.beginTransaction();
     await connection.query(
-      `INSERT INTO tasks (id, title, description, priority, status, due_date, project_id, comments_count, attachments_count)
-       VALUES (?, ?, ?, ?, 'Yapılacak', ?, ?, 0, 0)`,
-      [id, payload.title, payload.description, payload.priority, payload.dueDate || null, payload.projectId],
+      `INSERT INTO tasks (id, title, description, parent_task_id, priority, status, start_date, due_date, project_id, comments_count, attachments_count)
+       VALUES (?, ?, ?, ?, ?, 'Yapılacak', ?, ?, ?, 0, 0)`,
+      [
+        id,
+        payload.title,
+        payload.description,
+        payload.parentTaskId || null,
+        payload.priority,
+        payload.startDate || null,
+        payload.dueDate || null,
+        payload.projectId,
+      ],
     );
     for (const assigneeId of payload.assigneeIds) {
       await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [id, assigneeId]);
@@ -699,6 +928,7 @@ export const createTask = async (payload: {
       );
     }
     await connection.commit();
+    await syncAncestorStatuses(id);
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -711,19 +941,32 @@ export const updateTask = async (taskId: string, payload: {
   title: string;
   description: string;
   projectId: string;
+  parentTaskId?: string;
   assigneeIds: string[];
+  startDate?: string;
   dueDate?: string;
   priority: 'Yüksek' | 'Orta' | 'Düşük';
   status?: 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti';
 }) => {
   const connection = await pool.getConnection();
   try {
+    await validateTaskParentLink({ taskId, projectId: payload.projectId, parentTaskId: payload.parentTaskId || null });
     await connection.beginTransaction();
     await connection.query(
       `UPDATE tasks
-       SET title = ?, description = ?, priority = ?, status = ?, due_date = ?, project_id = ?
+       SET title = ?, description = ?, parent_task_id = ?, priority = ?, status = ?, start_date = ?, due_date = ?, project_id = ?
        WHERE id = ?`,
-      [payload.title, payload.description, payload.priority, payload.status || 'Yapılacak', payload.dueDate || null, payload.projectId, taskId],
+      [
+        payload.title,
+        payload.description,
+        payload.parentTaskId || null,
+        payload.priority,
+        payload.status || 'Yapılacak',
+        payload.startDate || null,
+        payload.dueDate || null,
+        payload.projectId,
+        taskId,
+      ],
     );
     await connection.query('DELETE FROM task_assignees WHERE task_id = ?', [taskId]);
     for (const assigneeId of payload.assigneeIds) {
@@ -736,12 +979,141 @@ export const updateTask = async (taskId: string, payload: {
       'task',
     ]);
     await connection.commit();
+    await syncAncestorStatuses(taskId);
   } catch (error) {
     await connection.rollback();
     throw error;
   } finally {
     connection.release();
   }
+};
+
+export const updateTaskStatus = async (taskId: string, status: 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti') => {
+  const [result] = await pool.query<ResultSetHeader>('UPDATE tasks SET status = ? WHERE id = ?', [status, taskId]);
+  if (result.affectedRows > 0) {
+    await syncAncestorStatuses(taskId);
+  }
+  return result.affectedRows > 0;
+};
+
+export const updateTaskParent = async (taskId: string, projectId: string, parentTaskId?: string | null) => {
+  await validateTaskParentLink({ taskId, projectId, parentTaskId });
+  const [result] = await pool.query<ResultSetHeader>('UPDATE tasks SET parent_task_id = ? WHERE id = ?', [parentTaskId || null, taskId]);
+  if (result.affectedRows > 0) {
+    await syncAncestorStatuses(taskId);
+  }
+  return result.affectedRows > 0;
+};
+
+export const canUserUpdateTaskStatus = async (taskId: string, userId: string, role: string) => {
+  if (role === 'Admin') {
+    return true;
+  }
+
+  const [rows] = await pool.query<RowDataPacket[]>(
+    'SELECT 1 FROM task_assignees WHERE task_id = ? AND user_id = ? LIMIT 1',
+    [taskId, userId],
+  );
+
+  return rows.length > 0;
+};
+
+export const updateUserRole = async (userId: string, role: string) => {
+  if (!VALID_APP_ROLES.includes(role as (typeof VALID_APP_ROLES)[number])) {
+    throw new Error('Gecersiz rol secimi.');
+  }
+
+  const [result] = await pool.query<ResultSetHeader>('UPDATE users SET role = ? WHERE id = ?', [role, userId]);
+  return result.affectedRows > 0;
+};
+
+export const getUserRoleAndDepartment = async (userId: string) => {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    'SELECT role, department FROM users WHERE id = ? LIMIT 1',
+    [userId],
+  );
+
+  if (!rows.length) {
+    return null;
+  }
+
+  return {
+    role: rows[0].role as string,
+    department: (rows[0].department as string | null) || 'Genel',
+  };
+};
+
+export const getAdminCount = async () => {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    "SELECT COUNT(*) AS total FROM users WHERE role = 'Admin'",
+  );
+
+  return Number(rows[0]?.total || 0);
+};
+
+export const updateUserDepartment = async (userId: string, department: string) => {
+  if (!VALID_DEPARTMENTS.includes(department as (typeof VALID_DEPARTMENTS)[number])) {
+    throw new Error('Gecersiz departman secimi.');
+  }
+
+  const [result] = await pool.query<ResultSetHeader>('UPDATE users SET department = ? WHERE id = ?', [department, userId]);
+  return result.affectedRows > 0;
+};
+
+export const createUserAuditLog = async (payload: {
+  actorUserId: string;
+  targetUserId: string;
+  action: 'role_update' | 'department_update';
+  oldValue?: string | null;
+  newValue?: string | null;
+}) => {
+  await pool.query(
+    `INSERT INTO user_audit_logs (id, actor_user_id, target_user_id, action, old_value, new_value)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      createEntityId('AUD'),
+      payload.actorUserId,
+      payload.targetUserId,
+      payload.action,
+      payload.oldValue || null,
+      payload.newValue || null,
+    ],
+  );
+};
+
+export const getUserAuditLogs = async (limit = 100) => {
+  const safeLimit = Math.max(1, Math.min(limit, 200));
+
+  const [rows] = await pool.query<UserAuditLogRow[]>(
+    `SELECT
+      l.id,
+      l.actor_user_id AS actorUserId,
+      actor.name AS actorName,
+      l.target_user_id AS targetUserId,
+      target.name AS targetName,
+      l.action,
+      l.old_value AS oldValue,
+      l.new_value AS newValue,
+      l.created_at AS createdAt
+     FROM user_audit_logs l
+     INNER JOIN users actor ON actor.id = l.actor_user_id
+     INNER JOIN users target ON target.id = l.target_user_id
+     ORDER BY l.created_at DESC
+     LIMIT ?`,
+    [safeLimit],
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    actorUserId: row.actorUserId,
+    actorName: row.actorName,
+    targetUserId: row.targetUserId,
+    targetName: row.targetName,
+    action: row.action,
+    oldValue: row.oldValue,
+    newValue: row.newValue,
+    createdAt: row.createdAt,
+  }));
 };
 
 export const deleteTask = async (taskId: string) => {
@@ -753,12 +1125,25 @@ export const deleteTask = async (taskId: string) => {
       await connection.rollback();
       return false;
     }
+
+    const [childRows] = await connection.query<RowDataPacket[]>(
+      'SELECT COUNT(*) AS total FROM tasks WHERE parent_task_id = ?',
+      [taskId],
+    );
+    const childCount = Number(childRows[0]?.total || 0);
+
+    if (childCount > 0) {
+      await connection.query('UPDATE tasks SET parent_task_id = NULL WHERE parent_task_id = ?', [taskId]);
+    }
+
     const taskTitle = taskRows[0].title as string;
     await connection.query('DELETE FROM tasks WHERE id = ?', [taskId]);
     await connection.query('INSERT INTO notifications (id, title, description, type) VALUES (?, ?, ?, ?)', [
       createEntityId('NTF'),
       'Görev Silindi',
-      `"${taskTitle}" görevi silindi.`,
+      childCount > 0
+        ? `"${taskTitle}" gorevi silindi ve ${childCount} alt gorev kok seviyeye tasindi.`
+        : `"${taskTitle}" gorevi silindi.`,
       'task',
     ]);
     await connection.commit();

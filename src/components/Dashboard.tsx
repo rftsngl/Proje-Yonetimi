@@ -17,6 +17,7 @@ interface DashboardProps {
   upcomingTasks: Task[];
   projectProgress: ProjectProgress[];
   currentUser: User;
+  onNavigateFromStat?: (targetTab: 'projects' | 'tasks') => void;
 }
 
 const iconMap: Record<string, any> = {
@@ -26,7 +27,7 @@ const iconMap: Record<string, any> = {
   CheckCircle2,
 };
 
-export default function Dashboard({ stats, upcomingTasks, projectProgress, currentUser }: DashboardProps) {
+export default function Dashboard({ stats, upcomingTasks, projectProgress, currentUser, onNavigateFromStat }: DashboardProps) {
   return (
     <div className="animate-in space-y-8 duration-500 fade-in">
       <div>
@@ -37,8 +38,15 @@ export default function Dashboard({ stats, upcomingTasks, projectProgress, curre
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         {stats.map((stat, index) => {
           const Icon = iconMap[stat.iconName];
+          const targetTab = stat.iconName === 'Briefcase' ? 'projects' : 'tasks';
+
           return (
-            <div key={index} className="rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-shadow hover:shadow-md">
+            <button
+              key={index}
+              type="button"
+              onClick={() => onNavigateFromStat?.(targetTab)}
+              className="rounded-2xl border border-slate-100 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+            >
               <div className="flex items-start justify-between">
                 <div className={`rounded-xl p-3 ${stat.bg} ${stat.color}`}>{Icon && <Icon className="h-6 w-6" />}</div>
                 <div className={`flex items-center gap-1 text-xs font-medium ${stat.trendUp ? 'text-emerald-600' : 'text-rose-600'}`}>
@@ -50,7 +58,7 @@ export default function Dashboard({ stats, upcomingTasks, projectProgress, curre
                 <h3 className="text-sm font-medium text-slate-500">{stat.label}</h3>
                 <p className="mt-1 text-2xl font-bold text-slate-900">{stat.value}</p>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -97,7 +105,11 @@ export default function Dashboard({ stats, upcomingTasks, projectProgress, curre
               </div>
             ))}
           </div>
-          <button className="w-full border-t border-slate-50 py-4 text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50">
+          <button
+            type="button"
+            onClick={() => onNavigateFromStat?.('tasks')}
+            className="w-full border-t border-slate-50 py-4 text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50"
+          >
             Tüm Görevleri Gör
           </button>
         </div>
