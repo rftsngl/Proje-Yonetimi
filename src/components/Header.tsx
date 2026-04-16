@@ -9,6 +9,7 @@ interface HeaderProps {
   onReadAllNotifications?: () => void;
   onDeleteNotification?: (id: string) => void;
   onDeleteAllNotifications?: () => void;
+  onToggleNotificationRead?: (id: string, read: boolean) => void;
   currentUser: User;
   onLogout?: () => Promise<void> | void;
 }
@@ -19,6 +20,7 @@ export default function Header({
   onReadAllNotifications, 
   onDeleteNotification,
   onDeleteAllNotifications,
+  onToggleNotificationRead,
   currentUser, 
   onLogout 
 }: HeaderProps) {
@@ -108,6 +110,7 @@ export default function Header({
               onReadAll={onReadAllNotifications}
               onDelete={onDeleteNotification}
               onDeleteAll={onDeleteAllNotifications}
+              onToggleRead={onToggleNotificationRead}
             />
           </div>
 

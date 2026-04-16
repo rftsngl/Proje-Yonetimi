@@ -103,6 +103,9 @@ export const deleteNotification = (notificationId: string) =>
 export const deleteAllNotifications = () =>
   withNormalizedBootstrap(api.delete<AppBootstrap>('/notifications'));
 
+export const setNotificationReadState = (notificationId: string, read: boolean) =>
+  withNormalizedBootstrap(api.patch<AppBootstrap>(`/notifications/${notificationId}/read`, { read }));
+
 export const updateUserRole = (userId: string, payload: UpdateUserRolePayload) =>
   withNormalizedBootstrap(api.patch<AppBootstrap>(`/users/${userId}/role`, payload));
 

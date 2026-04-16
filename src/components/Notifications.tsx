@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Notification } from '../types';
 import { Bell, CheckCircle2, Clock, MessageSquare, Briefcase, MoreHorizontal, Settings, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -8,10 +8,20 @@ interface NotificationsProps {
   onReadAll?: () => void;
   onDelete?: (id: string) => void;
   onDeleteAll?: () => void;
+  onToggleRead?: (id: string, read: boolean) => void;
+  onOpenDetail?: (notification: Notification) => void;
+  checkIsValidTarget?: (notification: Notification) => boolean;
 }
 
-export default function Notifications({ notifications, onReadAll, onDelete, onDeleteAll }: NotificationsProps) {
+export default function Notifications({ notifications, onReadAll, onDelete, onDeleteAll, onToggleRead, onOpenDetail, checkIsValidTarget }: NotificationsProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleOutsideClick = () => setActiveMenuId(null);
+    document.addEventListener('click', handleOutsideClick);
+    return () => document.removeEventListener('click', handleOutsideClick);
+  }, []);
   const getIcon = (type: string) => {
     switch (type) {
       case 'task':
@@ -93,20 +103,61 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
                 <p className="mt-1 text-sm leading-relaxed text-slate-500">{notification.description}</p>
 
                 <div className="mt-4 flex items-center gap-3">
-                  <button className="text-xs font-bold text-indigo-600 hover:underline">Detayları Gör</button>
-                  <span className="h-1 w-1 rounded-full bg-slate-300" />
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onDelete?.(notification.id); }} 
-                    className="text-xs font-bold text-slate-400 hover:text-slate-600"
-                  >
-                    Yoksay
-                  </button>
+                  {checkIsValidTarget?.(notification) ? (
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onOpenDetail?.(notification); }}
+                      className="text-xs font-bold text-indigo-600 hover:underline"
+                    >
+                      Detayları Gör
+                    </button>
+                  ) : (
+                    notification.entityType && notification.entityType !== 'none' ? (
+                      <span className="text-xs text-slate-400">Detay artık mevcut değil</span>
+                    ) : null
+                  )}
                 </div>
               </div>
 
-              <button className="p-2 text-slate-300 opacity-0 transition-all group-hover:opacity-100 hover:text-slate-500">
-                <MoreHorizontal className="h-5 w-5" />
-              </button>
+              <div className="relative">
+                <button 
+                  onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === notification.id ? null : notification.id); }}
+                  className={`p-2 text-slate-300 transition-all hover:text-slate-500 rounded-full hover:bg-slate-100 ${activeMenuId === notification.id ? 'opacity-100 bg-slate-100 text-slate-500' : 'opacity-0 group-hover:opacity-100'}`}
+                >
+                  <MoreHorizontal className="h-5 w-5" />
+                </button>
+                
+                <AnimatePresence>
+                  {activeMenuId === notification.id && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ duration: 0.1 }}
+                      className="absolute right-0 top-full mt-2 w-48 rounded-2xl border border-slate-100 bg-white p-2 shadow-xl z-20"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => {
+                          onToggleRead?.(notification.id, !notification.read);
+                          setActiveMenuId(null);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 hover:text-indigo-600"
+                      >
+                        {notification.read ? 'Okunmadı İşaretle' : 'Okundu İşaretle'}
+                      </button>
+                      <button
+                        onClick={() => {
+                          onDelete?.(notification.id);
+                          setActiveMenuId(null);
+                        }}
+                        className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm font-bold text-slate-700 hover:bg-rose-50 hover:text-rose-600"
+                      >
+                        Yoksay
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </motion.div>
           ))}
         </div>

@@ -42,6 +42,7 @@ import {
   updateUserRole,
   deleteNotification,
   deleteAllNotifications,
+  setNotificationReadState,
 } from './services/dashboard';
 import { clearStoredAuthToken, getStoredAuthToken } from './services/session';
 import {
@@ -56,6 +57,7 @@ import {
   Task,
   TaskTreeItem,
   UserAuditLogItem,
+  Notification,
 } from './types';
 
 export default function App() {
@@ -422,6 +424,40 @@ export default function App() {
     setData(updatedData);
   };
 
+  const handleToggleNotificationRead = async (notificationId: string, read: boolean) => {
+    try {
+      const updatedData = await setNotificationReadState(notificationId, read);
+      setData(updatedData);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleOpenNotificationDetail = (notification: Notification) => {
+    if (!notification.read) {
+      handleToggleNotificationRead(notification.id, true);
+    }
+    if (notification.entityType === 'task' && notification.entityId) {
+      const t = data.tasks.find(t => t.id === notification.entityId) || null;
+      setSelectedTask(t);
+      setIsTaskDetailModalOpen(true);
+    } else if (notification.entityType === 'project' && notification.entityId) {
+      const p = data.projects.find(p => p.id === notification.entityId) || null;
+      setSelectedProject(p);
+      setIsProjectDetailModalOpen(true);
+    }
+  };
+
+  const checkIsValidNotificationTarget = (notification: Notification) => {
+    if (notification.entityType === 'task' && notification.entityId) {
+      return data.tasks.some((t) => t.id === notification.entityId);
+    }
+    if (notification.entityType === 'project' && notification.entityId) {
+      return data.projects.some((p) => p.id === notification.entityId);
+    }
+    return false;
+  };
+
   const handleCreateCalendarEvent = async (payload: CreateCalendarEventPayload) => {
     const updatedData = await createCalendarEvent(payload);
     setData(updatedData);
@@ -709,6 +745,9 @@ export default function App() {
             onReadAll={handleReadAllNotifications} 
             onDelete={handleDeleteNotification}
             onDeleteAll={handleDeleteAllNotifications}
+            onToggleRead={handleToggleNotificationRead}
+            onOpenDetail={handleOpenNotificationDetail}
+            checkIsValidTarget={checkIsValidNotificationTarget}
           />
         );
       case 'settings':
@@ -728,6 +767,7 @@ export default function App() {
       onReadAllNotifications={handleReadAllNotifications}
       onDeleteNotification={handleDeleteNotification}
       onDeleteAllNotifications={handleDeleteAllNotifications}
+      onToggleNotificationRead={handleToggleNotificationRead}
       currentUser={data.currentUser}
       visibleTabs={visibleTabs}
       onLogout={handleLogout}

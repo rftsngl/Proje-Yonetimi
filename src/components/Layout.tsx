@@ -11,6 +11,7 @@ interface LayoutProps {
   onReadAllNotifications?: () => void;
   onDeleteNotification?: (id: string) => void;
   onDeleteAllNotifications?: () => void;
+  onToggleNotificationRead?: (id: string, read: boolean) => void;
   currentUser: User;
   visibleTabs: { id: string; label: string }[];
   onLogout?: () => Promise<void> | void;
@@ -24,6 +25,7 @@ export default function Layout({
   onReadAllNotifications,
   onDeleteNotification,
   onDeleteAllNotifications,
+  onToggleNotificationRead,
   currentUser,
   visibleTabs,
   onLogout,
@@ -50,6 +52,7 @@ export default function Layout({
           onReadAllNotifications={onReadAllNotifications}
           onDeleteNotification={onDeleteNotification}
           onDeleteAllNotifications={onDeleteAllNotifications}
+          onToggleNotificationRead={onToggleNotificationRead}
           currentUser={currentUser}
           onLogout={onLogout}
         />

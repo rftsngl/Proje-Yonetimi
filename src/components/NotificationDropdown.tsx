@@ -1,5 +1,5 @@
 import { Notification } from '../types';
-import { Bell, CheckCircle2, MessageSquare, Briefcase, Settings, Clock, X, CheckCheck } from 'lucide-react';
+import { Bell, CheckCircle2, MessageSquare, Briefcase, Settings, Clock, X, CheckCheck, Mail, MailOpen } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 
 interface NotificationDropdownProps {
@@ -10,6 +10,7 @@ interface NotificationDropdownProps {
   onReadAll?: () => void;
   onDelete?: (id: string) => void;
   onDeleteAll?: () => void;
+  onToggleRead?: (id: string, read: boolean) => void;
 }
 
 export default function NotificationDropdown({
@@ -20,6 +21,7 @@ export default function NotificationDropdown({
   onReadAll,
   onDelete,
   onDeleteAll,
+  onToggleRead,
 }: NotificationDropdownProps) {
   const getIcon = (type: string) => {
     switch (type) {
@@ -99,13 +101,22 @@ export default function NotificationDropdown({
                       <span className="text-[10px] font-medium">{notification.time}</span>
                     </div>
                   </div>
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onDelete?.(notification.id); }}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-slate-300 opacity-0 transition-all hover:text-rose-500 group-hover:opacity-100"
-                    title="Bildirimi Sil"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
+                  <div className="absolute right-4 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-all group-hover:opacity-100">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onToggleRead?.(notification.id, !notification.read); }}
+                      className="p-2 text-slate-300 transition-colors hover:text-indigo-500"
+                      title={notification.read ? "Okunmadı İşaretle" : "Okundu İşaretle"}
+                    >
+                      {notification.read ? <Mail className="h-4 w-4" /> : <MailOpen className="h-4 w-4" />}
+                    </button>
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onDelete?.(notification.id); }}
+                      className="p-2 text-slate-300 transition-colors hover:text-rose-500"
+                      title="Bildirimi Sil"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               ))
             ) : (

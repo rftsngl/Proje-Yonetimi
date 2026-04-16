@@ -31,6 +31,7 @@ import {
   updateUserRole,
   deleteNotification,
   deleteAllNotifications,
+  setNotificationReadState,
 } from '../services/dashboardService.js';
 import { getUserFromToken, loginUser, logoutUser, registerUser } from '../services/authService.js';
 import { createEntityId } from '../utils/formatters.js';
@@ -881,6 +882,32 @@ apiRouter.delete('/notifications/:notificationId', async (req, res, next) => {
     const deleted = await deleteNotification(req.params.notificationId);
 
     if (!deleted) {
+      return res.status(404).json({ message: 'Bildirim bulunamadi.' });
+    }
+
+    return res.json(await getBootstrapData(session.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.patch('/notifications/:notificationId/read', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+
+    if (!session) {
+      return;
+    }
+
+    const { read } = req.body;
+    
+    if (typeof read !== 'boolean') {
+      return res.status(400).json({ message: 'Gecersiz "read" degeri.' });
+    }
+
+    const updated = await setNotificationReadState(req.params.notificationId, read);
+
+    if (!updated) {
       return res.status(404).json({ message: 'Bildirim bulunamadi.' });
     }
 

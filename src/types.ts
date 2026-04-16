@@ -30,6 +30,8 @@ export interface Notification {
   time: string;
   type: 'task' | 'project' | 'mention' | 'system';
   read: boolean;
+  entityType?: 'task' | 'project' | 'calendar' | 'none';
+  entityId?: string | null;
 }
 
 export interface TaskComment {
