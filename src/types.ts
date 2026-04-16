@@ -32,6 +32,18 @@ export interface Notification {
   read: boolean;
   entityType?: 'task' | 'project' | 'calendar' | 'none';
   entityId?: string | null;
+  createdAt?: string;
+}
+
+export interface NotificationCursor {
+  createdAt?: string;
+  id?: string;
+}
+
+export interface NotificationsPageResponse {
+  items: Notification[];
+  hasMore: boolean;
+  nextCursor?: NotificationCursor;
 }
 
 export interface TaskComment {

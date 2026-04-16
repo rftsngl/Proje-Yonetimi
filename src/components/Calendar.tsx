@@ -322,8 +322,10 @@ export default function Calendar({ events, onCreateEvent, onDeleteEvent }: Calen
                     />
                   </div>
                   <div>
-                    <label className="mb-2 block text-sm font-bold text-slate-700">Tur</label>
+                    <label htmlFor="event-type-select" className="mb-2 block text-sm font-bold text-slate-700">Tur</label>
                     <select
+                      id="event-type-select"
+                      title="Etkinlik Türü"
                       value={eventType}
                       onChange={(event) => setEventType(event.target.value)}
                       className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"

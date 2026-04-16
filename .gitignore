@@ -34,3 +34,6 @@ pnpm-debug.log*
 # server specific
 uploads/
 !uploads/.gitkeep
+
+# Files
+scratch/

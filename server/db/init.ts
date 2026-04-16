@@ -91,11 +91,15 @@ CREATE TABLE IF NOT EXISTS task_attachments (
 
 CREATE TABLE IF NOT EXISTS notifications (
   id VARCHAR(32) PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL,
   title VARCHAR(160) NOT NULL,
   description TEXT NOT NULL,
   type ENUM('task', 'project', 'mention', 'system') NOT NULL,
+  entity_type VARCHAR(32) DEFAULT NULL,
+  entity_id VARCHAR(32) DEFAULT NULL,
   is_read BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_notifications_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS calendar_events (
@@ -161,11 +165,8 @@ const baseSeedStatements = [
     ('TSK-003', 'user1'), ('TSK-003', 'user4'),
     ('TSK-004', 'user2'),
     ('TSK-005', 'user4')`,
-  `INSERT IGNORE INTO notifications (id, title, description, type, is_read, created_at) VALUES
-    ('NTF-001', 'Yeni Görev Atandı', 'Celal Halilov size "Dashboard Geliştirme" görevini atadı.', 'task', FALSE, DATE_SUB(NOW(), INTERVAL 5 MINUTE)),
-    ('NTF-002', 'Proje Güncellemesi', '"E-Ticaret Mobil Uygulama" projesinin durumu güncellendi.', 'project', FALSE, DATE_SUB(NOW(), INTERVAL 1 HOUR)),
-    ('NTF-003', 'Yeni Yorum', 'Ayşe Kaya "Logo Tasarımı" görevine bir yorum bıraktı.', 'mention', TRUE, DATE_SUB(NOW(), INTERVAL 3 HOUR)),
-    ('NTF-004', 'Sistem Bakımı', 'Bu gece saat 02:00''de sistem bakımı yapılacaktır.', 'system', TRUE, DATE_SUB(NOW(), INTERVAL 1 DAY))`,
+  `INSERT IGNORE INTO notifications (id, user_id, title, description, type, is_read, created_at) VALUES
+    ('NTF-001', 'user1', 'Hoş Geldiniz', 'Görev Yönetimi Sistemine hoş geldiniz.', 'system', FALSE, DATE_SUB(NOW(), INTERVAL 5 MINUTE))`,
   `INSERT IGNORE INTO calendar_events (id, title, date, color, event_type, project_id) VALUES
     ('EV-001', 'Tasarım Teslimi', '2026-03-28', 'bg-indigo-100 text-indigo-700 border-indigo-200', 'tasarım', 'PRJ-003'),
     ('EV-002', 'Müşteri Toplantısı', '2026-03-29', 'bg-amber-100 text-amber-700 border-amber-200', 'toplantı', 'PRJ-002'),

@@ -32,6 +32,7 @@ import {
   deleteNotification,
   deleteAllNotifications,
   setNotificationReadState,
+  getPaginatedNotifications,
 } from '../services/dashboardService.js';
 import { getUserFromToken, loginUser, logoutUser, registerUser } from '../services/authService.js';
 import { createEntityId } from '../utils/formatters.js';
@@ -849,7 +850,7 @@ apiRouter.patch('/notifications/read-all', async (req, res, next) => {
       return;
     }
 
-    await markAllNotificationsAsRead();
+    await markAllNotificationsAsRead(session.user.id);
     return res.json(await getBootstrapData(session.user));
   } catch (error) {
     return next(error);
@@ -864,7 +865,7 @@ apiRouter.delete('/notifications', async (req, res, next) => {
       return;
     }
 
-    await deleteAllNotifications();
+    await deleteAllNotifications(session.user.id);
     return res.json(await getBootstrapData(session.user));
   } catch (error) {
     return next(error);
@@ -879,7 +880,7 @@ apiRouter.delete('/notifications/:notificationId', async (req, res, next) => {
       return;
     }
 
-    const deleted = await deleteNotification(req.params.notificationId);
+    const deleted = await deleteNotification(req.params.notificationId, session.user.id);
 
     if (!deleted) {
       return res.status(404).json({ message: 'Bildirim bulunamadi.' });
@@ -905,13 +906,29 @@ apiRouter.patch('/notifications/:notificationId/read', async (req, res, next) =>
       return res.status(400).json({ message: 'Gecersiz "read" degeri.' });
     }
 
-    const updated = await setNotificationReadState(req.params.notificationId, read);
+    const updated = await setNotificationReadState(req.params.notificationId, session.user.id, read);
 
     if (!updated) {
       return res.status(404).json({ message: 'Bildirim bulunamadi.' });
     }
 
     return res.json(await getBootstrapData(session.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.get('/notifications', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 20, 1), 50);
+    const beforeCreatedAt = req.query.beforeCreatedAt as string | undefined;
+    const beforeId = req.query.beforeId as string | undefined;
+
+    const result = await getPaginatedNotifications(session.user.id, limit, beforeCreatedAt, beforeId);
+    return res.json(result);
   } catch (error) {
     return next(error);
   }

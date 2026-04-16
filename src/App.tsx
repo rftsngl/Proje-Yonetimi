@@ -43,6 +43,7 @@ import {
   deleteNotification,
   deleteAllNotifications,
   setNotificationReadState,
+  getNotificationsPage,
 } from './services/dashboard';
 import { clearStoredAuthToken, getStoredAuthToken } from './services/session';
 import {
@@ -58,6 +59,7 @@ import {
   TaskTreeItem,
   UserAuditLogItem,
   Notification,
+  NotificationCursor,
 } from './types';
 
 export default function App() {
@@ -87,6 +89,12 @@ export default function App() {
 
   const [pendingDeleteNotification, setPendingDeleteNotification] = useState<Notification | null>(null);
   const pendingDeleteRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [notificationFeed, setNotificationFeed] = useState<Notification[]>([]);
+  const [notificationFeedHasMore, setNotificationFeedHasMore] = useState(false);
+  const [notificationFeedCursor, setNotificationFeedCursor] = useState<NotificationCursor | undefined>(undefined);
+  const [isLoadingOlderNotifications, setIsLoadingOlderNotifications] = useState(false);
+  const [hasInitializedNotificationFeed, setHasInitializedNotificationFeed] = useState(false);
 
   const refreshData = async () => {
     setError(null);
@@ -128,6 +136,21 @@ export default function App() {
       setActiveTab(visibleTabs[0].id);
     }
   }, [activeTab, isAuthenticated, visibleTabs]);
+
+  useEffect(() => {
+    if (activeTab === 'notifications' && !hasInitializedNotificationFeed) {
+      setNotificationFeed(data.notifications);
+      setHasInitializedNotificationFeed(true);
+      
+      if (data.notifications.length === 20) {
+        setNotificationFeedHasMore(true);
+        const last = data.notifications[data.notifications.length - 1];
+        setNotificationFeedCursor({ createdAt: last.createdAt, id: last.id });
+      } else {
+        setNotificationFeedHasMore(false);
+      }
+    }
+  }, [activeTab, hasInitializedNotificationFeed, data.notifications]);
 
   const handleLogin = async (payload: LoginPayload) => {
     setIsAuthLoading(true);
@@ -375,13 +398,43 @@ export default function App() {
     }
   };
 
+  const syncNotificationFeed = (updatedData: typeof data, customFeedUpdater?: (prevFeed: Notification[]) => Notification[]) => {
+    setData(updatedData);
+    if (!hasInitializedNotificationFeed) return;
+
+    setNotificationFeed(prevFeed => {
+      let nextFeed = customFeedUpdater ? customFeedUpdater(prevFeed) : prevFeed;
+      
+      const newBootstrapNotifs = updatedData.notifications;
+      
+      const existingMap = new Map<string, Notification>(nextFeed.map(n => [n.id, n]));
+      const newItemsToAdd: Notification[] = [];
+      newBootstrapNotifs.forEach(n => {
+        if (existingMap.has(n.id)) {
+          existingMap.set(n.id, n);
+        } else {
+          newItemsToAdd.push(n);
+        }
+      });
+      
+      let mergedFeed = [...newItemsToAdd, ...Array.from(existingMap.values())];
+      mergedFeed.sort((a, b) => {
+        const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        if (timeB !== timeA) return timeB - timeA;
+        return (b.id ?? '').localeCompare(a.id ?? '');
+      });
+      return mergedFeed;
+    });
+  };
+
   const handleReadAllNotifications = async () => {
     const updatedData = await markAllNotificationsRead();
-    setData(updatedData);
+    syncNotificationFeed(updatedData, (prev) => prev.map(n => ({ ...n, read: true })));
   };
 
   const handleDeleteNotification = (notificationId: string) => {
-    const target = data.notifications.find((n) => n.id === notificationId);
+    const target = (hasInitializedNotificationFeed ? notificationFeed : data.notifications).find((n) => n.id === notificationId);
     if (!target) return;
 
     if (pendingDeleteNotification) {
@@ -393,6 +446,10 @@ export default function App() {
       ...prev,
       notifications: prev.notifications.filter((n) => n.id !== notificationId),
     }));
+    
+    if (hasInitializedNotificationFeed) {
+      setNotificationFeed(prev => prev.filter(n => n.id !== notificationId));
+    }
 
     setPendingDeleteNotification(target);
 
@@ -412,9 +469,22 @@ export default function App() {
       clearTimeout(pendingDeleteRef.current!);
       setData((prev) => ({
         ...prev,
-        // En başa ekleyip geri getiriyoruz. (Sıralama sonraki refetch ile düzelir)
-        notifications: [pendingDeleteNotification, ...prev.notifications],
+        notifications: [(pendingDeleteNotification as Notification), ...prev.notifications].sort((a, b) => {
+          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tB - tA;
+        }),
       }));
+      if (hasInitializedNotificationFeed) {
+        setNotificationFeed(prev => {
+          const merged = [(pendingDeleteNotification as Notification), ...prev].sort((a, b) => {
+            const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return tB - tA;
+          });
+          return merged;
+        });
+      }
       setPendingDeleteNotification(null);
     }
   };
@@ -422,14 +492,46 @@ export default function App() {
   const handleDeleteAllNotifications = async () => {
     const updatedData = await deleteAllNotifications();
     setData(updatedData);
+    if (hasInitializedNotificationFeed) {
+      setNotificationFeed([]);
+      setNotificationFeedHasMore(false);
+      setNotificationFeedCursor(undefined);
+    }
   };
 
   const handleToggleNotificationRead = async (notificationId: string, read: boolean) => {
+    if (hasInitializedNotificationFeed) {
+      setNotificationFeed(prev => prev.map(n => n.id === notificationId ? { ...n, read } : n));
+    }
+    setData(prev => ({
+      ...prev,
+      notifications: prev.notifications.map(n => n.id === notificationId ? { ...n, read } : n)
+    }));
     try {
       const updatedData = await setNotificationReadState(notificationId, read);
       setData(updatedData);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const handleLoadOlderNotifications = async () => {
+    if (!notificationFeedHasMore || isLoadingOlderNotifications) return;
+    setIsLoadingOlderNotifications(true);
+    try {
+      const res = await getNotificationsPage(20, notificationFeedCursor?.createdAt, notificationFeedCursor?.id);
+      
+      setNotificationFeed(prev => {
+        const existingIds = new Set(prev.map(i => i.id));
+        const newUnique = res.items.filter(i => !existingIds.has(i.id));
+        return [...prev, ...newUnique];
+      });
+      setNotificationFeedHasMore(res.hasMore);
+      setNotificationFeedCursor(res.nextCursor);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingOlderNotifications(false);
     }
   };
 
@@ -741,13 +843,16 @@ export default function App() {
       case 'notifications':
         return (
           <Notifications 
-            notifications={data.notifications} 
+            notifications={notificationFeed} 
             onReadAll={handleReadAllNotifications} 
             onDelete={handleDeleteNotification}
             onDeleteAll={handleDeleteAllNotifications}
             onToggleRead={handleToggleNotificationRead}
             onOpenDetail={handleOpenNotificationDetail}
             checkIsValidTarget={checkIsValidNotificationTarget}
+            hasMore={notificationFeedHasMore}
+            isLoadingMore={isLoadingOlderNotifications}
+            onLoadMore={handleLoadOlderNotifications}
           />
         );
       case 'settings':

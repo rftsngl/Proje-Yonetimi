@@ -11,9 +11,12 @@ interface NotificationsProps {
   onToggleRead?: (id: string, read: boolean) => void;
   onOpenDetail?: (notification: Notification) => void;
   checkIsValidTarget?: (notification: Notification) => boolean;
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
-export default function Notifications({ notifications, onReadAll, onDelete, onDeleteAll, onToggleRead, onOpenDetail, checkIsValidTarget }: NotificationsProps) {
+export default function Notifications({ notifications, onReadAll, onDelete, onDeleteAll, onToggleRead, onOpenDetail, checkIsValidTarget, hasMore, isLoadingMore, onLoadMore }: NotificationsProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
 
@@ -172,11 +175,17 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
           </div>
         )}
 
-        <div className="border-t border-slate-50 bg-slate-50/50 p-4 text-center">
-          <button className="text-sm font-bold text-slate-500 transition-all hover:text-indigo-600">
-            Daha Eski Bildirimleri Yükle
-          </button>
-        </div>
+        {hasMore && (
+          <div className="border-t border-slate-50 bg-slate-50/50 p-4 text-center">
+            <button 
+              onClick={onLoadMore}
+              disabled={isLoadingMore}
+              className="text-sm font-bold text-slate-500 transition-all hover:text-indigo-600 disabled:opacity-50 disabled:cursor-wait"
+            >
+              {isLoadingMore ? 'Yükleniyor...' : 'Daha Eski Bildirimleri Yükle'}
+            </button>
+          </div>
+        )}
       </div>
 
       <AnimatePresence>

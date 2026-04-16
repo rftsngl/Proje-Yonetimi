@@ -120,3 +120,11 @@ export const getTaskTree = (projectId: string) =>
 
 export const updateTaskParent = (taskId: string, projectId: string, parentTaskId?: string | null) =>
   withNormalizedBootstrap(api.patch<AppBootstrap>(`/tasks/${taskId}/parent`, { projectId, parentTaskId: parentTaskId || null }));
+
+export const getNotificationsPage = (limit: number = 20, beforeCreatedAt?: string, beforeId?: string) => {
+  const params = new URLSearchParams({ limit: limit.toString() });
+  if (beforeCreatedAt) params.append('beforeCreatedAt', beforeCreatedAt);
+  if (beforeId) params.append('beforeId', beforeId);
+
+  return api.get<import('../types').NotificationsPageResponse>(`/notifications?${params.toString()}`);
+};
