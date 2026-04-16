@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { LayoutGrid, List, Plus } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Layout from './components/Layout';
@@ -40,6 +40,8 @@ import {
   updateTaskStatus,
   updateUserDepartment,
   updateUserRole,
+  deleteNotification,
+  deleteAllNotifications,
 } from './services/dashboard';
 import { clearStoredAuthToken, getStoredAuthToken } from './services/session';
 import {
@@ -80,6 +82,9 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<UserAuditLogItem[]>([]);
   const [isAuditLogsLoading, setIsAuditLogsLoading] = useState(false);
   const [taskTreeTasks, setTaskTreeTasks] = useState<Task[] | null>(null);
+
+  const [pendingDeleteNotification, setPendingDeleteNotification] = useState<Notification | null>(null);
+  const pendingDeleteRef = useRef<NodeJS.Timeout | null>(null);
 
   const refreshData = async () => {
     setError(null);
@@ -373,6 +378,50 @@ export default function App() {
     setData(updatedData);
   };
 
+  const handleDeleteNotification = (notificationId: string) => {
+    const target = data.notifications.find((n) => n.id === notificationId);
+    if (!target) return;
+
+    if (pendingDeleteNotification) {
+      clearTimeout(pendingDeleteRef.current!);
+      deleteNotification(pendingDeleteNotification.id).catch(console.error);
+    }
+
+    setData((prev) => ({
+      ...prev,
+      notifications: prev.notifications.filter((n) => n.id !== notificationId),
+    }));
+
+    setPendingDeleteNotification(target);
+
+    pendingDeleteRef.current = setTimeout(async () => {
+      setPendingDeleteNotification(null);
+      try {
+        const updatedData = await deleteNotification(notificationId);
+        setData(updatedData);
+      } catch (e) {
+        console.error(e);
+      }
+    }, 5000);
+  };
+
+  const handleUndoDeleteNotification = () => {
+    if (pendingDeleteNotification) {
+      clearTimeout(pendingDeleteRef.current!);
+      setData((prev) => ({
+        ...prev,
+        // En başa ekleyip geri getiriyoruz. (Sıralama sonraki refetch ile düzelir)
+        notifications: [pendingDeleteNotification, ...prev.notifications],
+      }));
+      setPendingDeleteNotification(null);
+    }
+  };
+
+  const handleDeleteAllNotifications = async () => {
+    const updatedData = await deleteAllNotifications();
+    setData(updatedData);
+  };
+
   const handleCreateCalendarEvent = async (payload: CreateCalendarEventPayload) => {
     const updatedData = await createCalendarEvent(payload);
     setData(updatedData);
@@ -654,7 +703,14 @@ export default function App() {
           />
         );
       case 'notifications':
-        return <Notifications notifications={data.notifications} onReadAll={handleReadAllNotifications} />;
+        return (
+          <Notifications 
+            notifications={data.notifications} 
+            onReadAll={handleReadAllNotifications} 
+            onDelete={handleDeleteNotification}
+            onDeleteAll={handleDeleteAllNotifications}
+          />
+        );
       case 'settings':
         return <Settings currentUser={data.currentUser} />;
       case 'tasks':
@@ -670,6 +726,8 @@ export default function App() {
       onTabChange={setActiveTab}
       notifications={data.notifications}
       onReadAllNotifications={handleReadAllNotifications}
+      onDeleteNotification={handleDeleteNotification}
+      onDeleteAllNotifications={handleDeleteAllNotifications}
       currentUser={data.currentUser}
       visibleTabs={visibleTabs}
       onLogout={handleLogout}
@@ -730,6 +788,19 @@ export default function App() {
         managers={data.users}
         initialProject={editingProject}
       />
+
+      {/* Undo Toast */}
+      {pendingDeleteNotification && (
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-full bg-slate-900 px-6 py-3 text-sm text-white shadow-xl animate-in slide-in-from-bottom-5">
+          <span>Bildirim silindi.</span>
+          <button
+            onClick={handleUndoDeleteNotification}
+            className="font-bold text-indigo-400 transition-colors hover:text-indigo-300"
+          >
+            Geri Al
+          </button>
+        </div>
+      )}
     </Layout>
   );
 }

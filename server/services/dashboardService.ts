@@ -1304,3 +1304,12 @@ export const addTaskAttachment = async (
 export const markAllNotificationsAsRead = async () => {
   await pool.query('UPDATE notifications SET is_read = TRUE WHERE is_read = FALSE');
 };
+
+export const deleteNotification = async (notificationId: string) => {
+  const [result] = await pool.query<ResultSetHeader>('DELETE FROM notifications WHERE id = ?', [notificationId]);
+  return result.affectedRows > 0;
+};
+
+export const deleteAllNotifications = async () => {
+  await pool.query('DELETE FROM notifications');
+};

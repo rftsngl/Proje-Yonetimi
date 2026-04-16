@@ -1,13 +1,17 @@
+import { useState } from 'react';
 import { Notification } from '../types';
 import { Bell, CheckCircle2, Clock, MessageSquare, Briefcase, MoreHorizontal, Settings, Trash2 } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface NotificationsProps {
   notifications: Notification[];
   onReadAll?: () => void;
+  onDelete?: (id: string) => void;
+  onDeleteAll?: () => void;
 }
 
-export default function Notifications({ notifications, onReadAll }: NotificationsProps) {
+export default function Notifications({ notifications, onReadAll, onDelete, onDeleteAll }: NotificationsProps) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const getIcon = (type: string) => {
     switch (type) {
       case 'task':
@@ -52,7 +56,11 @@ export default function Notifications({ notifications, onReadAll }: Notification
           >
             Hepsini Okundu İşaretle
           </button>
-          <button className="rounded-xl bg-slate-50 p-2 text-slate-400 transition-all hover:bg-slate-100 hover:text-rose-500">
+          <button 
+            onClick={() => setIsModalOpen(true)} 
+            disabled={!notifications.length}
+            className="rounded-xl bg-slate-50 p-2 text-slate-400 transition-all hover:bg-slate-100 hover:text-rose-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
             <Trash2 className="h-5 w-5" />
           </button>
         </div>
@@ -87,7 +95,12 @@ export default function Notifications({ notifications, onReadAll }: Notification
                 <div className="mt-4 flex items-center gap-3">
                   <button className="text-xs font-bold text-indigo-600 hover:underline">Detayları Gör</button>
                   <span className="h-1 w-1 rounded-full bg-slate-300" />
-                  <button className="text-xs font-bold text-slate-400 hover:text-slate-600">Yoksay</button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onDelete?.(notification.id); }} 
+                    className="text-xs font-bold text-slate-400 hover:text-slate-600"
+                  >
+                    Yoksay
+                  </button>
                 </div>
               </div>
 
@@ -114,6 +127,41 @@ export default function Notifications({ notifications, onReadAll }: Notification
           </button>
         </div>
       </div>
+
+      <AnimatePresence>
+        {isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
+            >
+              <h3 className="text-xl font-bold text-slate-900">Tümünü Sil</h3>
+              <p className="mt-2 text-sm text-slate-500">
+                Tüm bildirimleri kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
+              </p>
+              <div className="mt-6 flex items-center gap-3">
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="flex-1 rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-200"
+                >
+                  İptal
+                </button>
+                <button
+                  onClick={() => {
+                    setIsModalOpen(false);
+                    onDeleteAll?.();
+                  }}
+                  className="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-rose-700"
+                >
+                  Evet, Sil
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

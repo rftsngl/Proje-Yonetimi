@@ -7,11 +7,21 @@ interface HeaderProps {
   onMenuClick: () => void;
   notifications: Notification[];
   onReadAllNotifications?: () => void;
+  onDeleteNotification?: (id: string) => void;
+  onDeleteAllNotifications?: () => void;
   currentUser: User;
   onLogout?: () => Promise<void> | void;
 }
 
-export default function Header({ onMenuClick, notifications, onReadAllNotifications, currentUser, onLogout }: HeaderProps) {
+export default function Header({ 
+  onMenuClick, 
+  notifications, 
+  onReadAllNotifications, 
+  onDeleteNotification,
+  onDeleteAllNotifications,
+  currentUser, 
+  onLogout 
+}: HeaderProps) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const notificationAreaRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +106,8 @@ export default function Header({ onMenuClick, notifications, onReadAllNotificati
               notifications={notifications}
               unreadCount={unreadCount}
               onReadAll={onReadAllNotifications}
+              onDelete={onDeleteNotification}
+              onDeleteAll={onDeleteAllNotifications}
             />
           </div>
 

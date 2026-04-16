@@ -97,6 +97,12 @@ export const addTaskAttachment = (taskId: string, file: File) => {
 export const markAllNotificationsRead = () =>
   withNormalizedBootstrap(api.patch<AppBootstrap>('/notifications/read-all'));
 
+export const deleteNotification = (notificationId: string) =>
+  withNormalizedBootstrap(api.delete<AppBootstrap>(`/notifications/${notificationId}`));
+
+export const deleteAllNotifications = () =>
+  withNormalizedBootstrap(api.delete<AppBootstrap>('/notifications'));
+
 export const updateUserRole = (userId: string, payload: UpdateUserRolePayload) =>
   withNormalizedBootstrap(api.patch<AppBootstrap>(`/users/${userId}/role`, payload));
 

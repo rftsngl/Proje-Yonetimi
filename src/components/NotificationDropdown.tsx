@@ -8,6 +8,8 @@ interface NotificationDropdownProps {
   isOpen: boolean;
   onClose: () => void;
   onReadAll?: () => void;
+  onDelete?: (id: string) => void;
+  onDeleteAll?: () => void;
 }
 
 export default function NotificationDropdown({
@@ -16,6 +18,8 @@ export default function NotificationDropdown({
   isOpen,
   onClose,
   onReadAll,
+  onDelete,
+  onDeleteAll,
 }: NotificationDropdownProps) {
   const getIcon = (type: string) => {
     switch (type) {
@@ -71,10 +75,10 @@ export default function NotificationDropdown({
           <div className="max-h-[420px] overflow-y-auto divide-y divide-slate-50">
             {notifications.length > 0 ? (
               notifications.map((notification) => (
-                <button
+                <div
                   key={notification.id}
                   onClick={onClose}
-                  className={`relative flex w-full gap-3 p-4 text-left transition-colors hover:bg-slate-50 ${
+                  className={`group relative flex w-full cursor-pointer gap-3 p-4 text-left transition-colors hover:bg-slate-50 ${
                     !notification.read ? 'bg-indigo-50/20' : ''
                   }`}
                 >
@@ -95,7 +99,14 @@ export default function NotificationDropdown({
                       <span className="text-[10px] font-medium">{notification.time}</span>
                     </div>
                   </div>
-                </button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); onDelete?.(notification.id); }}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2 text-slate-300 opacity-0 transition-all hover:text-rose-500 group-hover:opacity-100"
+                    title="Bildirimi Sil"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               ))
             ) : (
               <div className="p-8 text-center">

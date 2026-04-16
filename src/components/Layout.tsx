@@ -9,6 +9,8 @@ interface LayoutProps {
   onTabChange: (tab: string) => void;
   notifications: Notification[];
   onReadAllNotifications?: () => void;
+  onDeleteNotification?: (id: string) => void;
+  onDeleteAllNotifications?: () => void;
   currentUser: User;
   visibleTabs: { id: string; label: string }[];
   onLogout?: () => Promise<void> | void;
@@ -20,6 +22,8 @@ export default function Layout({
   onTabChange,
   notifications,
   onReadAllNotifications,
+  onDeleteNotification,
+  onDeleteAllNotifications,
   currentUser,
   visibleTabs,
   onLogout,
@@ -44,6 +48,8 @@ export default function Layout({
           onMenuClick={() => setIsSidebarOpen(true)} 
           notifications={notifications}
           onReadAllNotifications={onReadAllNotifications}
+          onDeleteNotification={onDeleteNotification}
+          onDeleteAllNotifications={onDeleteAllNotifications}
           currentUser={currentUser}
           onLogout={onLogout}
         />
