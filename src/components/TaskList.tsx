@@ -3,6 +3,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Task } from '../types';
 import { resolveAvatarUrl } from '../lib/avatar';
+import { compareTasksByWbs } from '../lib/wbs';
 
 interface TaskListProps {
   tasks: Task[];
@@ -61,9 +62,7 @@ export default function TaskList({
     }
 
     const flattenByHierarchy = (parentId: string, level = 0): Array<{ task: Task; level: number }> => {
-      const siblings = [...(childrenByParentMap.get(parentId) || [])].sort((left, right) =>
-        (left.wbsCode || left.id).localeCompare(right.wbsCode || right.id),
-      );
+      const siblings = [...(childrenByParentMap.get(parentId) || [])].sort(compareTasksByWbs);
 
       return siblings.flatMap((task) => [{ task, level }, ...flattenByHierarchy(task.id, level + 1)]);
     };

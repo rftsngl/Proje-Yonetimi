@@ -13,6 +13,7 @@ interface ProjectDetailModalProps {
   onEdit?: (project: Project) => void;
   onDelete?: (project: Project) => void;
   onViewAllTasks?: (project: Project) => void;
+  onOpenWbs?: (project: Project) => void;
   onAddMember?: (project: Project, userId: string) => Promise<void>;
 }
 
@@ -25,6 +26,7 @@ export default function ProjectDetailModal({
   onEdit,
   onDelete,
   onViewAllTasks,
+  onOpenWbs,
   onAddMember,
 }: ProjectDetailModalProps) {
   if (!project) {
@@ -151,12 +153,20 @@ export default function ProjectDetailModal({
                   <div className="space-y-6">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xl font-bold text-slate-900">Proje Görevleri</h3>
-                      <button
-                        onClick={() => onViewAllTasks?.(project)}
-                        className="flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline"
-                      >
-                        Tümünü Gör <ExternalLink className="h-3 w-3" />
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => onOpenWbs?.(project)}
+                          className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100"
+                        >
+                          WBS Şeması
+                        </button>
+                        <button
+                          onClick={() => onViewAllTasks?.(project)}
+                          className="flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline"
+                        >
+                          Tümünü Gör <ExternalLink className="h-3 w-3" />
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-3">
                       {projectTasks.slice(0, 3).map((task) => (

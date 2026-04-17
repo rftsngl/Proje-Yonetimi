@@ -13,6 +13,7 @@ import Team from './components/Team';
 import Notifications from './components/Notifications';
 import TaskDetailModal from './components/TaskDetailModal';
 import ProjectDetailModal from './components/ProjectDetailModal';
+import WBSDiagram from './components/WBSDiagram';
 import CreateProjectModal from './components/CreateProjectModal';
 import CreateTaskModal from './components/CreateTaskModal';
 import ConfirmModal from './components/ConfirmModal';
@@ -76,6 +77,7 @@ export default function App() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isProjectDetailModalOpen, setIsProjectDetailModalOpen] = useState(false);
+  const [isWbsModalOpen, setIsWbsModalOpen] = useState(false);
   const [isCreateProjectModalOpen, setIsCreateProjectModalOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [taskProjectFilter, setTaskProjectFilter] = useState<Project | null>(null);
@@ -711,6 +713,11 @@ export default function App() {
     setIsProjectDetailModalOpen(false);
   };
 
+  const handleOpenProjectWbs = (project: Project) => {
+    setSelectedProject(project);
+    setIsWbsModalOpen(true);
+  };
+
   const handleDashboardStatNavigation = (targetTab: 'projects' | 'tasks') => {
     if (targetTab === 'tasks') {
       setTaskProjectFilter(null);
@@ -1139,7 +1146,14 @@ export default function App() {
         onEdit={canManageProjects ? handleEditProject : undefined}
         onDelete={canManageProjects ? handleDeleteProject : undefined}
         onViewAllTasks={handleViewProjectTasks}
+        onOpenWbs={handleOpenProjectWbs}
         onAddMember={canManageTeam ? handleAddProjectMember : undefined}
+      />
+
+      <WBSDiagram
+        project={selectedProjectData}
+        isOpen={isWbsModalOpen}
+        onClose={() => setIsWbsModalOpen(false)}
       />
 
       <CreateProjectModal
