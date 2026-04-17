@@ -1,4 +1,5 @@
 import { Project, Task, User } from '../types';
+import { resolveAvatarUrl } from '../lib/avatar';
 import { X, Clock, Briefcase, Trash2, Edit2, ExternalLink, Target, BarChart3, UserPlus } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -196,7 +197,7 @@ export default function ProjectDetailModal({
                     <h4 className="text-sm font-bold uppercase tracking-widest text-slate-400">Proje Yöneticisi</h4>
                     <div className="flex items-center gap-4 rounded-3xl border border-slate-100 bg-slate-50 p-4">
                       <img
-                        src={`https://picsum.photos/seed/${project.managerAvatar}/48/48`}
+                        src={resolveAvatarUrl(project.managerAvatar, 48)}
                         alt={project.manager}
                         className="h-12 w-12 rounded-2xl"
                         referrerPolicy="no-referrer"
@@ -248,7 +249,7 @@ export default function ProjectDetailModal({
                       {teamMembers.map((user) => (
                         <div key={user.id} className="group relative">
                           <img
-                            src={`https://picsum.photos/seed/${user.avatar}/40/40`}
+                            src={resolveAvatarUrl(user.avatar, 40)}
                             alt={user.name}
                             className="h-10 w-10 cursor-pointer rounded-xl border-2 border-white shadow-sm transition-transform hover:scale-110"
                             referrerPolicy="no-referrer"

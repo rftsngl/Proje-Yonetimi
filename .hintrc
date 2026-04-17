@@ -10,11 +10,16 @@
         "button-name": "off"
       }
     ],
-    "axe/forms": [
-      "default",
-      {
-        "label": "off"
-      }
-    ]
-  }
+    "axe/forms": "off",
+    "axe/aria": "off",
+    "no-inline-styles": "off"
+  },
+  "browserslist": [
+    "defaults",
+    "not ie 11",
+    "not chrome <= 112",
+    "not ios_saf <= 26",
+    "not safari <= 26.1",
+    "not samsung <= 29"
+  ]
 }

@@ -1,5 +1,6 @@
 import { ChangeEvent, useMemo, useRef, useState } from 'react';
 import { Task, TaskComment, User } from '../types';
+import { resolveAvatarUrl } from '../lib/avatar';
 import {
   Calendar,
   CheckCircle2,
@@ -420,7 +421,7 @@ export default function TaskDetailModal({
                         task.commentsList.map((item) => (
                           <div key={item.id} className="flex gap-4">
                             <img
-                              src={`https://picsum.photos/seed/${item.authorAvatar}/40/40`}
+                              src={resolveAvatarUrl(item.authorAvatar, 40)}
                               alt={item.authorName}
                               className="h-10 w-10 flex-shrink-0 rounded-full"
                               referrerPolicy="no-referrer"
@@ -489,7 +490,7 @@ export default function TaskDetailModal({
 
                     <div className="flex gap-4 pt-4">
                       <img
-                        src={`https://picsum.photos/seed/${users[0]?.avatar || 'user1'}/40/40`}
+                        src={resolveAvatarUrl(users[0]?.avatar || 'user1', 40)}
                         alt="User"
                         className="h-10 w-10 flex-shrink-0 rounded-full"
                         referrerPolicy="no-referrer"
@@ -566,7 +567,7 @@ export default function TaskDetailModal({
                       {assignees.map((user) => (
                         <div key={user.id} className="flex items-center gap-3 rounded-xl border border-slate-100 p-3 transition-all hover:bg-slate-50">
                           <img
-                            src={`https://picsum.photos/seed/${user.avatar}/36/36`}
+                            src={resolveAvatarUrl(user.avatar, 36)}
                             alt={user.name}
                             className="h-9 w-9 rounded-full"
                             referrerPolicy="no-referrer"

@@ -89,6 +89,7 @@ type CalendarRow = RowDataPacket & {
   id: string;
   title: string;
   date: string;
+  endDate: string | null;
   color: string;
   eventType: string;
 };
@@ -225,7 +226,7 @@ const validateTaskParentLink = async (payload: { taskId?: string; projectId: str
   }
 
   if (taskId && taskId === parentTaskId) {
-    throw new Error('Bir gorev kendisini ust gorev olarak secemez.');
+    throw new Error('Bir görev kendisini üst görev olarak seçemez.');
   }
 
   const [parentRows] = await pool.query<RowDataPacket[]>(
@@ -234,11 +235,11 @@ const validateTaskParentLink = async (payload: { taskId?: string; projectId: str
   );
 
   if (!parentRows.length) {
-    throw new Error('Secilen ust gorev bulunamadi.');
+    throw new Error('Seçilen üst görev bulunamadı.');
   }
 
   if (parentRows[0].projectId !== projectId) {
-    throw new Error('Ust gorev ayni proje icinde olmalidir.');
+    throw new Error('Üst görev aynı proje içinde olmalıdır.');
   }
 
   if (!taskId) {
@@ -248,7 +249,7 @@ const validateTaskParentLink = async (payload: { taskId?: string; projectId: str
   let cursor: string | null = parentTaskId;
   while (cursor) {
     if (cursor === taskId) {
-      throw new Error('Bu secim gorev hiyerarsisinde dongu olusturuyor.');
+      throw new Error('Bu seçim görev hiyerarşisinde döngü oluşturuyor.');
     }
 
     const [queryRows] = await pool.query<RowDataPacket[]>(
@@ -481,7 +482,7 @@ const getProjects = async () => {
       SELECT
         project_id,
         COUNT(*) AS totalTasks,
-        SUM(CASE WHEN status = 'Tamamland─▒' THEN 1 ELSE 0 END) AS completedTasks
+        SUM(CASE WHEN status = 'Tamamlandı' THEN 1 ELSE 0 END) AS completedTasks
       FROM tasks
       GROUP BY project_id
     ) taskStats ON taskStats.project_id = p.id
@@ -508,12 +509,14 @@ const getProjects = async () => {
 
 const getCalendarEvents = async () => {
   const [rows] = await pool.query<CalendarRow[]>(
-    'SELECT id, title, date, color, event_type AS eventType FROM calendar_events ORDER BY date ASC, created_at ASC',
+    'SELECT id, title, date, end_date AS endDate, reminder_offset AS reminderOffset, color, event_type AS eventType FROM calendar_events ORDER BY date ASC, created_at ASC',
   );
   return rows.map((row) => ({
     id: row.id,
     title: row.title,
     date: formatCalendarDate(row.date),
+    endDate: row.endDate ? formatCalendarDate(row.endDate) : undefined,
+    reminderOffset: row.reminderOffset || 0,
     color: row.color,
     eventType: row.eventType,
   }));
@@ -560,9 +563,10 @@ const getTeamMembers = async () => {
   }));
 };
 
-const getNotifications = async () => {
+const getNotifications = async (userId: string) => {
   const [rows] = await pool.query<NotificationRow[]>(
-    'SELECT id, title, description, type, is_read AS isRead, created_at AS createdAt, entity_type AS entityType, entity_id AS entityId FROM notifications ORDER BY created_at DESC LIMIT 20',
+    'SELECT id, title, description, type, is_read AS isRead, created_at AS createdAt, entity_type AS entityType, entity_id AS entityId FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 20',
+    [userId]
   );
 
   return rows.map((row) => ({
@@ -648,9 +652,49 @@ export const getBootstrapData = async (currentUser: {
     getProjects(),
     getCalendarEvents(),
     getTeamMembers(),
-    getNotifications(),
+    getNotifications(currentUser.id),
     getUsers(),
   ]);
+
+  // JIT Reminder Check
+  const now = new Date();
+  for (const event of calendarEvents) {
+    if (event.endDate && event.reminderOffset && event.reminderOffset > 0) {
+      const endDateTime = new Date(event.endDate).getTime();
+      const reminderTime = endDateTime - (event.reminderOffset * 60 * 1000);
+      
+      if (now.getTime() >= reminderTime && now.getTime() < endDateTime) {
+        // Check if notification already exists for this event + reminder trigger
+        const [existing] = await pool.query<RowDataPacket[]>(
+          'SELECT 1 FROM notifications WHERE user_id = ? AND entity_id = ? AND title LIKE ? LIMIT 1',
+          [currentUser.id, event.id, '%Hatırlatıcı%']
+        );
+
+        if (existing.length === 0) {
+          await pool.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+            createEntityId('NTF'),
+            currentUser.id,
+            `⏰ Hatırlatıcı: ${event.title}`,
+            `"${event.title}" etkinliğinin bitiş süresi yaklaşıyor.`,
+            'system',
+            'calendar',
+            event.id
+          ]);
+          // Refresh notifications after insert
+          notifications.unshift({
+            id: 'temp',
+            title: `⏰ Hatırlatıcı: ${event.title}`,
+            description: `"${event.title}" etkinliğinin bitiş süresi yaklaşıyor.`,
+            time: 'Şimdi',
+            type: 'system',
+            read: false,
+            entityType: 'calendar',
+            entityId: event.id
+          });
+        }
+      }
+    }
+  }
 
   const isPrivileged = canViewAllData(currentUser.role);
   const visibleProjects = isPrivileged ? projects : projects.filter((project) => project.team.includes(currentUser.id));
@@ -694,7 +738,7 @@ export const createProject = async (payload: {
   startDate?: string;
   endDate?: string;
   themeColor?: string;
-}) => {
+}, actorUserId: string) => {
   const id = createEntityId('PRJ');
   const connection = await pool.getConnection();
   try {
@@ -705,10 +749,11 @@ export const createProject = async (payload: {
       [id, payload.name, payload.description, payload.managerId, payload.startDate || null, payload.endDate || null, payload.category, payload.themeColor || 'bg-indigo-600'],
     );
     await connection.query('INSERT INTO project_members (project_id, user_id) VALUES (?, ?)', [id, payload.managerId]);
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
-      'Yeni Proje Olu┼şturuldu',
-      `"${payload.name}" projesi ba┼şar─▒yla olu┼şturuldu.`,
+      actorUserId,
+      'Yeni Proje Oluşturuldu',
+      `"${payload.name}" projesi başarıyla oluşturuldu.`,
       'project',
       'project',
       id
@@ -731,17 +776,20 @@ export const createProject = async (payload: {
 export const createCalendarEvent = async (payload: {
   title: string;
   date: string;
+  endDate?: string;
+  reminderOffset?: number;
   color: string;
   eventType: string;
-}) => {
+}, actorUserId: string) => {
   const calendarEventId = createEntityId('EV');
   await pool.query(
-    'INSERT INTO calendar_events (id, title, date, color, event_type, project_id) VALUES (?, ?, ?, ?, ?, NULL)',
-    [calendarEventId, payload.title, payload.date, payload.color, payload.eventType],
+    'INSERT INTO calendar_events (id, title, date, end_date, reminder_offset, color, event_type, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)',
+    [calendarEventId, payload.title, payload.date, payload.endDate || null, payload.reminderOffset || 0, payload.color, payload.eventType],
   );
 
-  await pool.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+  await pool.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
     createEntityId('NTF'),
+    actorUserId,
     'Takvim Etkinligi Eklendi',
     `"${payload.title}" etkinligi ${payload.date} tarihi icin takvime eklendi.`,
     'system',
@@ -750,7 +798,7 @@ export const createCalendarEvent = async (payload: {
     ]);
 };
 
-export const deleteCalendarEvent = async (eventId: string) => {
+export const deleteCalendarEvent = async (eventId: string, actorUserId: string) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -768,8 +816,9 @@ export const deleteCalendarEvent = async (eventId: string) => {
     const eventDate = formatCalendarDate(eventRows[0].date as string | Date);
 
     await connection.query('DELETE FROM calendar_events WHERE id = ?', [eventId]);
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
+      actorUserId,
       'Takvim Etkinligi Silindi',
       `"${eventTitle}" etkinligi ${eventDate} tarihli takvim kayitlarindan kaldirildi.`,
       'system',
@@ -796,8 +845,8 @@ export const updateProject = async (projectId: string, payload: {
   endDate?: string;
   themeColor?: string;
   progress?: number;
-  status?: 'Aktif' | 'Tamamland─▒';
-}) => {
+  status?: 'Aktif' | 'Tamamlandı';
+}, actorUserId: string) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -826,10 +875,11 @@ export const updateProject = async (projectId: string, payload: {
         );
       }
     }
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
-      'Proje G├╝ncellendi',
-      `"${payload.name}" projesi ba┼şar─▒yla g├╝ncellendi.`,
+      actorUserId,
+      'Proje Güncellendi',
+      `"${payload.name}" projesi başarıyla güncellendi.`,
       'project',
       'project',
       projectId
@@ -843,7 +893,7 @@ export const updateProject = async (projectId: string, payload: {
   }
 };
 
-export const deleteProject = async (projectId: string) => {
+export const deleteProject = async (projectId: string, actorUserId: string) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -854,10 +904,11 @@ export const deleteProject = async (projectId: string) => {
     }
     const projectName = projectRows[0].name as string;
     await connection.query('DELETE FROM projects WHERE id = ?', [projectId]);
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
+      actorUserId,
       'Proje Silindi',
-      `"${projectName}" projesi sistemden kald─▒r─▒ld─▒.`,
+      `"${projectName}" projesi sistemden kaldırıldı.`,
       'project',
       'project',
       projectId
@@ -872,7 +923,7 @@ export const deleteProject = async (projectId: string) => {
   }
 };
 
-export const addProjectMember = async (projectId: string, userId: string) => {
+export const addProjectMember = async (projectId: string, userId: string, actorUserId: string) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -883,10 +934,11 @@ export const addProjectMember = async (projectId: string, userId: string) => {
       return false;
     }
     await connection.query('INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)', [projectId, userId]);
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
-      'Projeye Yeni ├£ye Eklendi',
-      `"${userRows[0].name as string}" kullan─▒c─▒s─▒ "${projectRows[0].name as string}" projesine eklendi.`,
+      actorUserId,
+      'Projeye Yeni Üye Eklendi',
+      `"${userRows[0].name as string}" kullanıcısı "${projectRows[0].name as string}" projesine eklendi.`,
       'project',
       'project',
       projectId
@@ -909,8 +961,8 @@ export const createTask = async (payload: {
   assigneeIds: string[];
   startDate?: string;
   dueDate?: string;
-  priority: 'Y├╝ksek' | 'Orta' | 'D├╝┼ş├╝k';
-}) => {
+  priority: 'Yüksek' | 'Orta' | 'Düşük';
+}, actorUserId: string) => {
   const id = createEntityId('TSK');
   const connection = await pool.getConnection();
   try {
@@ -918,7 +970,7 @@ export const createTask = async (payload: {
     await connection.beginTransaction();
     await connection.query(
       `INSERT INTO tasks (id, title, description, parent_task_id, priority, status, start_date, due_date, project_id, comments_count, attachments_count)
-       VALUES (?, ?, ?, ?, ?, 'Yap─▒lacak', ?, ?, ?, 0, 0)`,
+       VALUES (?, ?, ?, ?, ?, 'Yapılacak', ?, ?, ?, 0, 0)`,
       [
         id,
         payload.title,
@@ -933,10 +985,11 @@ export const createTask = async (payload: {
     for (const assigneeId of payload.assigneeIds) {
       await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [id, assigneeId]);
     }
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
-      'Yeni G├Ârev Olu┼şturuldu',
-      `"${payload.title}" g├Ârevi planland─▒ ve ekibe atand─▒.`,
+      actorUserId,
+      'Yeni Görev Oluşturuldu',
+      `"${payload.title}" görevi planlandı ve ekibe atandı.`,
       'task',
       'task',
       id
@@ -944,7 +997,7 @@ export const createTask = async (payload: {
     if (payload.dueDate) {
       await connection.query(
         'INSERT INTO calendar_events (id, title, date, color, event_type, project_id) VALUES (?, ?, ?, ?, ?, ?)',
-        [createEntityId('EV'), payload.title, payload.dueDate, 'bg-emerald-100 text-emerald-700 border-emerald-200', 'g├Ârev', payload.projectId],
+        [createEntityId('EV'), payload.title, payload.dueDate, 'bg-emerald-100 text-emerald-700 border-emerald-200', 'görev', payload.projectId],
       );
     }
     await connection.commit();
@@ -965,9 +1018,9 @@ export const updateTask = async (taskId: string, payload: {
   assigneeIds: string[];
   startDate?: string;
   dueDate?: string;
-  priority: 'Y├╝ksek' | 'Orta' | 'D├╝┼ş├╝k';
-  status?: 'Yap─▒lacak' | 'Devam Ediyor' | 'Tamamland─▒' | 'Gecikti';
-}) => {
+  priority: 'Yüksek' | 'Orta' | 'Düşük';
+  status?: 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti';
+}, actorUserId: string) => {
   const connection = await pool.getConnection();
   try {
     await validateTaskParentLink({ taskId, projectId: payload.projectId, parentTaskId: payload.parentTaskId || null });
@@ -981,7 +1034,7 @@ export const updateTask = async (taskId: string, payload: {
         payload.description,
         payload.parentTaskId || null,
         payload.priority,
-        payload.status || 'Yap─▒lacak',
+        payload.status || 'Yapılacak',
         payload.startDate || null,
         payload.dueDate || null,
         payload.projectId,
@@ -992,10 +1045,11 @@ export const updateTask = async (taskId: string, payload: {
     for (const assigneeId of payload.assigneeIds) {
       await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [taskId, assigneeId]);
     }
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
-      'G├Ârev G├╝ncellendi',
-      `"${payload.title}" g├Ârevi g├╝ncellendi.`,
+      actorUserId,
+      'Görev Güncellendi',
+      `"${payload.title}" görevi güncellendi.`,
       'task',
       'task',
       taskId
@@ -1010,7 +1064,7 @@ export const updateTask = async (taskId: string, payload: {
   }
 };
 
-export const updateTaskStatus = async (taskId: string, status: 'Yap─▒lacak' | 'Devam Ediyor' | 'Tamamland─▒' | 'Gecikti') => {
+export const updateTaskStatus = async (taskId: string, status: 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti') => {
   const [result] = await pool.query<ResultSetHeader>('UPDATE tasks SET status = ? WHERE id = ?', [status, taskId]);
   if (result.affectedRows > 0) {
     await syncAncestorStatuses(taskId);
@@ -1042,7 +1096,7 @@ export const canUserUpdateTaskStatus = async (taskId: string, userId: string, ro
 
 export const updateUserRole = async (userId: string, role: string) => {
   if (!VALID_APP_ROLES.includes(role as (typeof VALID_APP_ROLES)[number])) {
-    throw new Error('Gecersiz rol secimi.');
+    throw new Error('Geçersiz rol seçimi.');
   }
 
   const [result] = await pool.query<ResultSetHeader>('UPDATE users SET role = ? WHERE id = ?', [role, userId]);
@@ -1075,17 +1129,86 @@ export const getAdminCount = async () => {
 
 export const updateUserDepartment = async (userId: string, department: string) => {
   if (!VALID_DEPARTMENTS.includes(department as (typeof VALID_DEPARTMENTS)[number])) {
-    throw new Error('Gecersiz departman secimi.');
+    throw new Error('Geçersiz departman seçimi.');
   }
 
   const [result] = await pool.query<ResultSetHeader>('UPDATE users SET department = ? WHERE id = ?', [department, userId]);
   return result.affectedRows > 0;
 };
 
+export const deleteUser = async (userId: string, payload: { actorUserId: string }) => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    // 1. Kullanıcı var mı?
+    const [userRows] = await connection.query<RowDataPacket[]>(
+      'SELECT id, name, role FROM users WHERE id = ? LIMIT 1',
+      [userId]
+    );
+
+    if (!userRows.length) {
+      throw new Error('Kullanıcı bulunamadı.');
+    }
+
+    const user = userRows[0];
+
+    // 2. Son admin mi?
+    if (user.role === 'Admin') {
+      const [adminRows] = await connection.query<RowDataPacket[]>(
+        "SELECT COUNT(*) AS total FROM users WHERE role = 'Admin'"
+      );
+      if (Number(adminRows[0]?.total || 0) <= 1) {
+        throw new Error('Sistemdeki son admini silemezsiniz.');
+      }
+    }
+
+    // 3. Proje yöneticisi mi?
+    const [projectRows] = await connection.query<RowDataPacket[]>(
+      'SELECT name FROM projects WHERE manager_id = ? LIMIT 1',
+      [userId]
+    );
+
+    if (projectRows.length > 0) {
+      throw new Error(
+        `Bu kullanıcı "${projectRows[0].name}" projesinin yöneticisidir. Silmeden önce projenin yöneticisini değiştirin.`
+      );
+    }
+
+    // 4. Silme işleminden önce log oluştur
+    await connection.query(
+      `INSERT INTO user_audit_logs (id, actor_user_id, target_user_id, action, old_value, new_value)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [
+        createEntityId('AUD'),
+        payload.actorUserId,
+        userId,
+        'user_deletion',
+        user.name, // Silinen kişinin adını saklıyoruz
+        null
+      ]
+    );
+
+    // 5. Silme işlemi
+    const [result] = await connection.query<ResultSetHeader>(
+      'DELETE FROM users WHERE id = ?',
+      [userId]
+    );
+
+    await connection.commit();
+    return result.affectedRows > 0;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
 export const createUserAuditLog = async (payload: {
   actorUserId: string;
   targetUserId: string;
-  action: 'role_update' | 'department_update';
+  action: 'role_update' | 'department_update' | 'user_deletion';
   oldValue?: string | null;
   newValue?: string | null;
 }) => {
@@ -1112,14 +1235,14 @@ export const getUserAuditLogs = async (limit = 100) => {
       l.actor_user_id AS actorUserId,
       actor.name AS actorName,
       l.target_user_id AS targetUserId,
-      target.name AS targetName,
+      COALESCE(target.name, l.old_value) AS targetName,
       l.action,
       l.old_value AS oldValue,
       l.new_value AS newValue,
       l.created_at AS createdAt
      FROM user_audit_logs l
      INNER JOIN users actor ON actor.id = l.actor_user_id
-     INNER JOIN users target ON target.id = l.target_user_id
+     LEFT JOIN users target ON target.id = l.target_user_id
      ORDER BY l.created_at DESC
      LIMIT ?`,
     [safeLimit],
@@ -1138,7 +1261,7 @@ export const getUserAuditLogs = async (limit = 100) => {
   }));
 };
 
-export const deleteTask = async (taskId: string) => {
+export const deleteTask = async (taskId: string, actorUserId: string) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -1160,12 +1283,13 @@ export const deleteTask = async (taskId: string) => {
 
     const taskTitle = taskRows[0].title as string;
     await connection.query('DELETE FROM tasks WHERE id = ?', [taskId]);
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
-      'G├Ârev Silindi',
+      actorUserId,
+      'Görev Silindi',
       childCount > 0
-        ? `"${taskTitle}" gorevi silindi ve ${childCount} alt gorev kok seviyeye tasindi.`
-        : `"${taskTitle}" gorevi silindi.`,
+        ? `"${taskTitle}" görevi silindi ve ${childCount} alt görev kök seviyeye taşındı.`
+        : `"${taskTitle}" görevi silindi.`,
       'task',
       'task',
       taskId
@@ -1192,10 +1316,11 @@ export const addTaskComment = async (taskId: string, userId: string, content: st
     }
     await connection.query('INSERT INTO task_comments (id, task_id, user_id, content) VALUES (?, ?, ?, ?)', [createEntityId('CMT'), taskId, userId, content]);
     await connection.query('UPDATE tasks SET comments_count = comments_count + 1 WHERE id = ?', [taskId]);
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
-      'Yeni G├Ârev Yorumu',
-      `"${userRows[0].name as string}" kullan─▒c─▒s─▒ "${taskRows[0].title as string}" g├Ârevine yorum ekledi.`,
+      userId,
+      'Yeni Görev Yorumu',
+      `"${userRows[0].name as string}" kullanıcısı "${taskRows[0].title as string}" görevine yorum ekledi.`,
       'mention',
       'task',
       taskId
@@ -1248,7 +1373,7 @@ export const deleteTaskComment = async (taskId: string, commentId: string) => {
   }
 };
 
-export const addTaskAssignee = async (taskId: string, userId: string) => {
+export const addTaskAssignee = async (taskId: string, userId: string, actorUserId: string) => {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -1259,10 +1384,11 @@ export const addTaskAssignee = async (taskId: string, userId: string) => {
       return false;
     }
     await connection.query('INSERT IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)', [taskId, userId]);
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
-      'G├Âreve ├£ye Eklendi',
-      `"${userRows[0].name as string}" kullan─▒c─▒s─▒ "${taskRows[0].title as string}" g├Ârevine atand─▒.`,
+      actorUserId,
+      'Göreve Üye Eklendi',
+      `"${userRows[0].name as string}" kullanıcısı "${taskRows[0].title as string}" görevine atandı.`,
       'task',
       'task',
       taskId
@@ -1289,6 +1415,7 @@ export const removeTaskAssignee = async (taskId: string, userId: string) => {
 export const addTaskAttachment = async (
   taskId: string,
   payload: { name: string; fileType: string; fileSizeLabel: string; mimeType?: string | null; fileSizeBytes?: number | null; filePath?: string | null },
+  actorUserId: string,
 ) => {
   const connection = await pool.getConnection();
   try {
@@ -1313,10 +1440,11 @@ export const addTaskAttachment = async (
       ],
     );
     await connection.query('UPDATE tasks SET attachments_count = attachments_count + 1 WHERE id = ?', [taskId]);
-    await connection.query('INSERT INTO notifications (id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)', [
+    await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
-      'G├Âreve Ek Y├╝klendi',
-      `"${payload.name}" eki "${taskRows[0].title as string}" g├Ârevine eklendi.`,
+      actorUserId,
+      'Göreve Ek Yüklendi',
+      `"${payload.name}" eki "${taskRows[0].title as string}" görevine eklendi.`,
       'task',
       'task',
       taskId
@@ -1408,4 +1536,34 @@ export const getPaginatedNotifications = async (userId: string, limit = 20, befo
     hasMore,
     nextCursor,
   };
+};
+
+export const updateCalendarEvent = async (eventId: string, payload: {
+  title: string;
+  date: string;
+  endDate?: string;
+  reminderOffset?: number;
+  color: string;
+  eventType: string;
+}, actorUserId: string) => {
+  const [result] = await pool.query<ResultSetHeader>(
+    'UPDATE calendar_events SET title = ?, date = ?, end_date = ?, reminder_offset = ?, color = ?, event_type = ? WHERE id = ?',
+    [payload.title, payload.date, payload.endDate || null, payload.reminderOffset || 0, payload.color, payload.eventType, eventId],
+  );
+
+  if (result.affectedRows === 0) {
+    return false;
+  }
+
+  await pool.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
+    createEntityId('NTF'),
+    actorUserId,
+    'Takvim Etkinliği Güncellendi',
+    `"${payload.title}" etkinliği bilgileri güncellendi.`,
+    'system',
+    'calendar',
+    eventId
+  ]);
+
+  return true;
 };

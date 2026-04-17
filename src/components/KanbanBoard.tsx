@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { MoreHorizontal, Plus, Clock, MessageSquare, Paperclip } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Task } from '../types';
 import { User } from '../types';
+import { resolveAvatarUrl } from '../lib/avatar';
 
 interface KanbanBoardProps {
   tasks: Task[];
@@ -26,7 +28,7 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
   const canMoveTask = (task: Task) => Boolean(currentUser && (currentUser.role === 'Admin' || task.assignees.includes(currentUser.id)));
 
   return (
-    <div className="animate-in slide-in-from-bottom-4 space-y-6 duration-500 fade-in">
+    <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="space-y-6">
       {showHeader && (
         <div className="flex items-center justify-between">
           <div>
@@ -44,11 +46,12 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
         </div>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <motion.div className="grid grid-cols-1 items-start gap-6 md:grid-cols-2 xl:grid-cols-4" initial="hidden" animate="visible" variants={{ visible: { transition: { staggerChildren: 0.1 } } }}>
         {columns.map((column) => {
           const columnTasks = tasks.filter((task) => task.status === column.id);
           return (
-            <div
+            <motion.div
+              variants={{ hidden: { opacity: 0, x: -10 }, visible: { opacity: 1, x: 0 } }}
               key={column.id}
               onDragOver={(event) => {
                 event.preventDefault();
@@ -94,10 +97,17 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
               </div>
 
               <div className="space-y-4">
-                {columnTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    onClick={() => onTaskClick?.(task)}
+                <AnimatePresence mode="popLayout">
+                  {columnTasks.map((task) => (
+                    <motion.div
+                      layout
+                      layoutId={`task-${task.id}`}
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                      key={task.id}
+                      onClick={() => onTaskClick?.(task)}
                     draggable={canMoveTask(task)}
                     onDragStart={() => {
                       if (canMoveTask(task)) {
@@ -137,7 +147,7 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
                         {task.assignees.map((userId, index) => (
                           <img
                             key={`${task.id}-${userId}-${index}`}
-                            src={`https://picsum.photos/seed/${userId}/32/32`}
+                            src={resolveAvatarUrl(userId, 32)}
                             alt={task.assigneeNames[index] || 'Kullanıcı'}
                             className="h-7 w-7 rounded-full border-2 border-white shadow-sm"
                             referrerPolicy="no-referrer"
@@ -158,10 +168,11 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
                           <Clock className="h-3 w-3" />
                           <span className="text-[10px] font-bold">{task.date}</span>
                         </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                ))}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
 
                 <button
                   onClick={onAddTask}
@@ -171,10 +182,10 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
                   Görev Ekle
                 </button>
               </div>
-            </div>
+            </motion.div>
           );
         })}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

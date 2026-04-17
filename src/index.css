@@ -1,1 +1,424 @@
 @import "tailwindcss";
+
+/* ===================================================================
+   Dark Theme — Black-based palette
+   Applied via .dark class on <html>
+   =================================================================== */
+
+/* --- Root color-scheme ------------------------------------------- */
+.dark {
+  color-scheme: dark;
+}
+
+/* --- App background (html / body / root wrappers) --------------- */
+.dark,
+.dark body {
+  background-color: #0d0d0f;
+  color: #fafafa;
+}
+
+/* --- Primary surfaces: bg-white, bg-gray-50, bg-slate-50 -------- */
+.dark .bg-white,
+.dark .bg-white\/80,
+.dark .bg-white\/70,
+.dark .bg-white\/60,
+.dark .bg-white\/50,
+.dark .bg-white\/40,
+.dark .bg-white\/30,
+.dark .bg-white\/20,
+.dark .bg-white\/10,
+.dark .bg-white\/5 {
+  background-color: #121214 !important;
+}
+.dark .bg-gray-50,
+.dark .bg-slate-50 {
+  background-color: #0d0d0f !important;
+}
+.dark .bg-slate-50\/50,
+.dark .bg-slate-50\/30,
+.dark .bg-gray-50\/50 {
+  background-color: #121214 !important;
+}
+
+/* --- Secondary / elevated surfaces ------------------------------ */
+.dark .bg-slate-100,
+.dark .bg-gray-100 {
+  background-color: #18181b !important;
+}
+
+/* --- Borders ---------------------------------------------------- */
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-slate-50,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-white\/70,
+.dark .border-white\/60,
+.dark .border-white\/40,
+.dark .border-white\/20,
+.dark .border-white\/10,
+.dark .border-white {
+  border-color: #27272a !important;
+}
+
+/* --- Dividers --------------------------------------------------- */
+.dark .divide-slate-50 > *,
+.dark .divide-gray-100 > *,
+.dark .divide-y > *,
+.dark .divide-slate-50 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #27272a !important;
+}
+
+/* Force dark divide colors globally to override Tailwind 4 CSS vars */
+.dark .divide-slate-50,
+.dark .divide-gray-100,
+.dark .divide-y {
+  --tw-divide-color: #27272a !important;
+  --tw-border-color: #27272a !important;
+}
+
+/* --- Vertical separator ----------------------------------------- */
+.dark .bg-gray-200 {
+  background-color: #27272a !important;
+}
+
+/* --- Text: primary ---------------------------------------------- */
+.dark .text-gray-900,
+.dark .text-slate-900 {
+  color: #fafafa !important;
+}
+.dark .text-gray-800,
+.dark .text-slate-800 {
+  color: #e4e4e7 !important;
+}
+
+/* --- Text: secondary -------------------------------------------- */
+.dark .text-gray-700,
+.dark .text-slate-700 {
+  color: #e4e4e7 !important;
+}
+.dark .text-gray-600,
+.dark .text-slate-600 {
+  color: #d1d1d6 !important;
+}
+.dark .text-gray-500,
+.dark .text-slate-500 {
+  color: #a1a1aa !important;
+}
+.dark .text-gray-400,
+.dark .text-slate-400 {
+  color: #8a8a93 !important;
+}
+
+/* --- Placeholder ------------------------------------------------ */
+.dark .placeholder-gray-500::placeholder {
+  color: #52525b !important;
+}
+
+/* --- Form controls ---------------------------------------------- */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #121214 !important;
+  color: #fafafa !important;
+  border-color: #27272a !important;
+}
+.dark input:focus,
+.dark select:focus,
+.dark textarea:focus {
+  border-color: #6366f1 !important;
+  background-color: #18181b !important;
+}
+.dark input::placeholder {
+  color: #71717a !important;
+}
+
+/* --- Hover states: gray backgrounds ----------------------------- */
+.dark .hover\:bg-gray-100:hover {
+  background-color: #18181b !important;
+}
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-slate-100:hover {
+  background-color: #111113 !important;
+}
+
+/* --- Active tab / indigo highlights ----------------------------- */
+.dark .bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+.dark .hover\:bg-indigo-50\/50:hover {
+  background-color: rgba(99, 102, 241, 0.06) !important;
+}
+.dark .hover\:bg-indigo-50:hover {
+  background-color: rgba(99, 102, 241, 0.12) !important;
+}
+.dark .hover\:bg-indigo-100:hover {
+  background-color: rgba(99, 102, 241, 0.18) !important;
+}
+.dark .hover\:border-indigo-200:hover {
+  border-color: rgba(99, 102, 241, 0.25) !important;
+}
+.dark .hover\:bg-indigo-50\/60:hover {
+  background-color: rgba(99, 102, 241, 0.08) !important;
+}
+
+/* --- Shadows ---------------------------------------------------- */
+.dark .shadow-sm {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.6) !important;
+}
+.dark .shadow-lg {
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.7) !important;
+}
+.dark .shadow-xl {
+  box-shadow: 0 8px 24px 0 rgba(0, 0, 0, 0.8) !important;
+}
+.dark .shadow-2xl {
+  box-shadow: 0 10px 40px 0 rgba(0, 0, 0, 0.9) !important;
+}
+.dark .shadow-3xl {
+  box-shadow: 0 20px 60px 0 rgba(0, 0, 0, 1) !important;
+}
+
+/* Clear color leaks from colored shadows */
+.dark .shadow-indigo-100\/20,
+.dark .shadow-indigo-100\/10,
+.dark .shadow-indigo-100,
+.dark .shadow-indigo-200,
+.dark .shadow-indigo-300,
+.dark .shadow-indigo-50,
+.dark .shadow-slate-200\/70,
+.dark .shadow-slate-200\/50,
+.dark .shadow-slate-200 {
+  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.9) !important;
+}
+
+/* --- Header backdrop blur --------------------------------------- */
+.dark .backdrop-blur-md,
+.dark .backdrop-blur-xl,
+.dark .backdrop-blur-2xl {
+  -webkit-backdrop-filter: blur(20px) !important;
+  backdrop-filter: blur(20px) !important;
+}
+
+/* Dampen mesh gradients in dark mode */
+.dark .blur-\[120px\],
+.dark .blur-\[100px\] {
+  opacity: 0.4 !important;
+}
+
+/* --- Notification badge ring on dark bg ------------------------- */
+.dark .ring-white {
+  --tw-ring-color: #0a0a0a !important;
+}
+
+/* --- Profile dropdown & popover --------------------------------- */
+.dark .bg-white.shadow-xl,
+.dark .bg-white.shadow-lg {
+  background-color: #111113 !important;
+}
+
+/* --- Rose/danger hover ------------------------------------------ */
+.dark .hover\:bg-rose-50:hover {
+  background-color: rgba(244, 63, 94, 0.1) !important;
+}
+
+/* --- Settings page specific ------------------------------------- */
+/* Settings tab sidebar panel */
+.dark .bg-slate-50\/50 {
+  background-color: #0a0a0a !important;
+}
+
+/* Settings footer bar */
+.dark .bg-slate-50\/30 {
+  background-color: #0a0a0a !important;
+}
+
+/* Settings active tab card */
+.dark .bg-white.shadow-sm {
+  background-color: #111113 !important;
+}
+
+/* Notification toggle cards */
+.dark .bg-slate-50\/50 {
+  background-color: #0a0a0a !important;
+}
+
+/* Theme/language selector cards */
+.dark .border-indigo-500.bg-indigo-50 {
+  background-color: rgba(99, 102, 241, 0.1) !important;
+  border-color: #6366f1 !important;
+}
+
+/* Feedback banners */
+.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.1) !important;
+}
+.dark .border-emerald-200 {
+  border-color: rgba(16, 185, 129, 0.2) !important;
+}
+.dark .text-emerald-700 {
+  color: #34d399 !important;
+}
+.dark .bg-rose-50 {
+  background-color: rgba(244, 63, 94, 0.1) !important;
+}
+.dark .border-rose-200 {
+  border-color: rgba(244, 63, 94, 0.2) !important;
+}
+.dark .text-rose-700 {
+  color: #fb7185 !important;
+}
+
+/* --- Mobile sidebar overlay ------------------------------------- */
+.dark .bg-black\/20 {
+  background-color: rgba(0, 0, 0, 0.5) !important;
+}
+
+/* --- Read-only input style -------------------------------------- */
+.dark .cursor-not-allowed {
+  background-color: #111113 !important;
+  color: #52525b !important;
+}
+
+/* --- Scrollbar – subtle dark scrollbar for webkit --------------- */
+.dark ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: #000000;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* ===================================================================
+   Kanban Board — dark surface hierarchy
+   column (#111113) > card (#18181b) > page (#000)
+   =================================================================== */
+
+/* Kanban column container: bg-slate-100/50 */
+.dark .bg-slate-100\/50 {
+  background-color: #111113 !important;
+}
+
+/* Drag-over ring offset stays dark */
+.dark .ring-offset-slate-50 {
+  --tw-ring-offset-color: #000000 !important;
+}
+.dark .ring-indigo-200 {
+  --tw-ring-color: rgba(99, 102, 241, 0.35) !important;
+}
+
+/* Kanban card: already bg-white (#0a0a0a) — raise slightly via border */
+/* Card inner border-t separator */
+.dark .border-t.border-slate-50 {
+  border-color: #1e1e22 !important;
+}
+
+/* Count badge in column header */
+.dark .border.border-slate-200.bg-white {
+  background-color: #18181b !important;
+  border-color: #27272a !important;
+  color: #a1a1aa !important;
+}
+
+/* "Görev Ekle" dashed button */
+.dark .border-dashed.border-slate-200 {
+  border-color: #27272a !important;
+}
+.dark .border-dashed.border-slate-200:hover {
+  border-color: rgba(99, 102, 241, 0.4) !important;
+}
+.dark .hover\:bg-white:hover {
+  background-color: #18181b !important;
+}
+
+/* Card avatar ring */
+.dark .border-2.border-white {
+  border-color: #111113 !important;
+}
+
+/* Priority badges — dark-safe semantic backgrounds */
+.dark .bg-rose-50 {
+  background-color: rgba(244, 63, 94, 0.12) !important;
+}
+.dark .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.12) !important;
+}
+/* bg-slate-50 priority low badge — already #000, override to subtle */
+.dark .bg-slate-50.text-slate-600 {
+  background-color: #18181b !important;
+}
+
+/* Card hover lift shadow */
+.dark .hover\:shadow-md:hover {
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Kanban card text: slate-300 muted icon colors */
+.dark .text-slate-300 {
+  color: #3f3f46 !important;
+}
+
+/* ===================================================================
+   Dashboard — "Yaklaşan Görevler" inner list harmony
+   =================================================================== */
+
+/* Task row hover: slate-50 → dark surface variation */
+.dark .hover\:bg-slate-50:hover {
+  background-color: #111113 !important;
+}
+
+/* "Tüm Görevleri Gör" / "Tüm Aktiviteyi Gör" footer hover */
+/* Already: hover:bg-indigo-50 handled above */
+/* Footer: hover:bg-slate-50 handled above */
+
+/* Activity icon backgrounds */
+.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.1) !important;
+}
+
+/* "Rapor" button dark fix */
+.dark .border.border-slate-200.bg-white.shadow-sm {
+  background-color: #18181b !important;
+  border-color: #27272a !important;
+}
+.dark .border.border-slate-200.bg-white.shadow-sm:hover {
+  background-color: #27272a !important;
+}
+
+/* ===================================================================
+   Custom UI Helpers
+   =================================================================== */
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #e2e8f0 transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #e2e8f0;
+  border-radius: 20px;
+}
+
+.dark .custom-scrollbar {
+  scrollbar-color: #27272a transparent;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: #27272a;
+}

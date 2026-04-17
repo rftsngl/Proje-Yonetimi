@@ -52,6 +52,9 @@ export const createCalendarEvent = (payload: CreateCalendarEventPayload) =>
 export const deleteCalendarEvent = (eventId: string) =>
   withNormalizedBootstrap(api.delete<AppBootstrap>(`/calendar-events/${eventId}`));
 
+export const updateCalendarEvent = (eventId: string, payload: CreateCalendarEventPayload) =>
+  withNormalizedBootstrap(api.patch<AppBootstrap>(`/calendar-events/${eventId}`, payload));
+
 export const updateProject = (projectId: string, payload: UpdateProjectPayload) =>
   withNormalizedBootstrap(api.patch<AppBootstrap>(`/projects/${projectId}`, payload));
 
@@ -111,6 +114,9 @@ export const updateUserRole = (userId: string, payload: UpdateUserRolePayload) =
 
 export const updateUserDepartment = (userId: string, payload: UpdateUserDepartmentPayload) =>
   withNormalizedBootstrap(api.patch<AppBootstrap>(`/users/${userId}/department`, payload));
+
+export const deleteTeamMember = (userId: string) =>
+  withNormalizedBootstrap(api.delete<AppBootstrap>(`/users/${userId}`));
 
 export const getAdminAuditLogs = (limit = 100) =>
   api.get<UserAuditLogsResponse>(`/admin/audit-logs?limit=${limit}`);

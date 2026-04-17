@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { LayoutGrid, List, Plus } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Layout from './components/Layout';
@@ -14,6 +15,7 @@ import TaskDetailModal from './components/TaskDetailModal';
 import ProjectDetailModal from './components/ProjectDetailModal';
 import CreateProjectModal from './components/CreateProjectModal';
 import CreateTaskModal from './components/CreateTaskModal';
+import ConfirmModal from './components/ConfirmModal';
 import { defaultBootstrapData } from './lib/defaultData';
 import { getVisibleTabs } from './lib/permissions';
 import { login, logout, register, restoreSession } from './services/auth';
@@ -35,11 +37,13 @@ import {
   markAllNotificationsRead,
   removeTaskAssignee,
   updateTaskComment,
+  updateCalendarEvent,
   updateProject,
   updateTask,
   updateTaskStatus,
   updateUserDepartment,
   updateUserRole,
+  deleteTeamMember,
   deleteNotification,
   deleteAllNotifications,
   setNotificationReadState,
@@ -86,15 +90,33 @@ export default function App() {
   const [auditLogs, setAuditLogs] = useState<UserAuditLogItem[]>([]);
   const [isAuditLogsLoading, setIsAuditLogsLoading] = useState(false);
   const [taskTreeTasks, setTaskTreeTasks] = useState<Task[] | null>(null);
+  const [isSettingsDirty, setIsSettingsDirty] = useState(false);
 
   const [pendingDeleteNotification, setPendingDeleteNotification] = useState<Notification | null>(null);
   const pendingDeleteRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void;
+    showCancel?: boolean;
+    variant?: 'danger' | 'warning' | 'info' | 'success';
+  }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   const [notificationFeed, setNotificationFeed] = useState<Notification[]>([]);
   const [notificationFeedHasMore, setNotificationFeedHasMore] = useState(false);
   const [notificationFeedCursor, setNotificationFeedCursor] = useState<NotificationCursor | undefined>(undefined);
   const [isLoadingOlderNotifications, setIsLoadingOlderNotifications] = useState(false);
   const [hasInitializedNotificationFeed, setHasInitializedNotificationFeed] = useState(false);
+
+  const deletedNotificationIds = useRef<Set<string>>(new Set());
+
+  const activeNotifications = useMemo(() => {
+    return data.notifications.filter(n => !deletedNotificationIds.current.has(n.id));
+  }, [data.notifications]);
 
   const refreshData = async () => {
     setError(null);
@@ -139,18 +161,47 @@ export default function App() {
 
   useEffect(() => {
     if (activeTab === 'notifications' && !hasInitializedNotificationFeed) {
-      setNotificationFeed(data.notifications);
+      setNotificationFeed(activeNotifications);
       setHasInitializedNotificationFeed(true);
       
-      if (data.notifications.length === 20) {
+      if (activeNotifications.length === 20) {
         setNotificationFeedHasMore(true);
-        const last = data.notifications[data.notifications.length - 1];
+        const last = activeNotifications[activeNotifications.length - 1];
         setNotificationFeedCursor({ createdAt: last.createdAt, id: last.id });
       } else {
         setNotificationFeedHasMore(false);
       }
     }
-  }, [activeTab, hasInitializedNotificationFeed, data.notifications]);
+  }, [activeTab, hasInitializedNotificationFeed, activeNotifications]);
+
+  useEffect(() => {
+    if (hasInitializedNotificationFeed) {
+      setNotificationFeed(prev => {
+        const existingMap = new Map<string, Notification>(prev.map(n => [n.id, n]));
+        let hasChanges = false;
+        const toAdd: Notification[] = [];
+        
+        activeNotifications.forEach(n => {
+          if (!existingMap.has(n.id)) {
+            toAdd.push(n);
+            hasChanges = true;
+          } else if (existingMap.get(n.id)!.read !== n.read) {
+            existingMap.set(n.id, n);
+            hasChanges = true;
+          }
+        });
+        
+        if (!hasChanges) return prev;
+        
+        const merged = [...toAdd, ...Array.from(existingMap.values())].sort((a, b) => {
+          const tA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tB !== tA ? tB - tA : (b.id ?? '').localeCompare(a.id ?? '');
+        });
+        return merged;
+      });
+    }
+  }, [activeNotifications, hasInitializedNotificationFeed]);
 
   const handleLogin = async (payload: LoginPayload) => {
     setIsAuthLoading(true);
@@ -158,6 +209,8 @@ export default function App() {
 
     try {
       const response = await login(payload);
+      // Premium animasyonun görülmesi için yapay gecikme
+      await new Promise((resolve) => setTimeout(resolve, 2500));
       setData(response.bootstrap);
       setIsAuthenticated(true);
       setActiveTab('dashboard');
@@ -174,6 +227,8 @@ export default function App() {
 
     try {
       const response = await register(payload);
+      // Premium animasyonun görülmesi için yapay gecikme
+      await new Promise((resolve) => setTimeout(resolve, 2500));
       setData(response.bootstrap);
       setIsAuthenticated(true);
       setActiveTab('dashboard');
@@ -185,6 +240,26 @@ export default function App() {
   };
 
   const handleLogout = async () => {
+    if (activeTab === 'settings' && isSettingsDirty) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Kaydedilmemiş Değişiklikler',
+        message: 'Ayarlar sayfasında kaydedilmemiş değişiklikleriniz var. Çıkış yapmak istediğinize emin misiniz?',
+        confirmLabel: 'Çıkış Yap',
+        variant: 'warning',
+        onConfirm: async () => {
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+          setIsSettingsDirty(false);
+          await logout();
+          setIsAuthenticated(false);
+          setData(defaultBootstrapData);
+          setSelectedTask(null);
+          setSelectedProject(null);
+          setTaskProjectFilter(null);
+        },
+      });
+      return;
+    }
     await logout();
     setIsAuthenticated(false);
     setData(defaultBootstrapData);
@@ -213,6 +288,25 @@ export default function App() {
     setIsProjectDetailModalOpen(true);
   };
 
+  const handleTabChange = (tab: string) => {
+    if (activeTab === 'settings' && isSettingsDirty && tab !== 'settings') {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Kaydedilmemiş Değişiklikler',
+        message: 'Ayarlar sayfasında kaydedilmemiş değişiklikleriniz var. Ayrılmak istediğinize emin misiniz?',
+        confirmLabel: 'Ayrıl',
+        variant: 'warning',
+        onConfirm: () => {
+          setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+          setIsSettingsDirty(false);
+          setActiveTab(tab);
+        },
+      });
+    } else {
+      setActiveTab(tab);
+    }
+  };
+
   const handleCreateTask = async (payload: CreateTaskPayload) => {
     const updatedData = editingTask
       ? await updateTask(editingTask.id, {
@@ -234,20 +328,22 @@ export default function App() {
     setIsTaskModalOpen(true);
   };
 
-  const handleDeleteTask = async (task: Task) => {
-    const confirmed = window.confirm(`"${task.title}" görevini silmek istediğinize emin misiniz?`);
+  const handleDeleteTask = (task: Task) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Görevi Sil',
+      message: `"${task.title}" görevini silmek istediğinize emin misiniz?`,
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        const updatedData = await deleteTask(task.id);
+        setData(updatedData);
+        setIsTaskDetailModalOpen(false);
 
-    if (!confirmed) {
-      return;
-    }
-
-    const updatedData = await deleteTask(task.id);
-    setData(updatedData);
-    setIsTaskDetailModalOpen(false);
-
-    if (selectedTask?.id === task.id) {
-      setSelectedTask(null);
-    }
+        if (selectedTask?.id === task.id) {
+          setSelectedTask(null);
+        }
+      }
+    });
   };
 
   const handleAddTaskComment = async (task: Task, content: string) => {
@@ -269,9 +365,30 @@ export default function App() {
   };
 
   const handleRemoveTaskAssignee = async (task: Task, userId: string) => {
-    const updatedData = await removeTaskAssignee(task.id, userId);
-    setData(updatedData);
-    setSelectedTask(updatedData.tasks.find((item) => item.id === task.id) || null);
+    const user = data.users.find(u => u.id === userId);
+    setConfirmModal({
+      isOpen: true,
+      title: 'Atamayı Kaldır',
+      message: `${user?.name || 'Kullanıcı'} kullanıcısının bu görevdeki atamasını kaldırmak istediğinize emin misiniz?`,
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        try {
+          const updatedData = await removeTaskAssignee(task.id, userId);
+          setData(updatedData);
+          setSelectedTask(updatedData.tasks.find((item) => item.id === task.id) || null);
+        } catch {
+          setConfirmModal({
+            isOpen: true,
+            title: 'Hata',
+            message: 'Kullanıcı ataması kaldırılamadı.',
+            confirmLabel: 'Tamam',
+            showCancel: false,
+            variant: 'danger',
+            onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+          });
+        }
+      }
+    });
   };
 
   const handleUpdateTaskComment = async (task: Task, commentId: string, content: string) => {
@@ -285,7 +402,15 @@ export default function App() {
       const updatedData = await updateTaskStatus(taskId, status);
       setData(updatedData);
     } catch (moveError) {
-      window.alert(moveError instanceof Error ? moveError.message : 'Görev durumu güncellenemedi.');
+      setConfirmModal({
+        isOpen: true,
+        title: 'Hata',
+        message: moveError instanceof Error ? moveError.message : 'Görev durumu güncellenemedi.',
+        confirmLabel: 'Tamam',
+        showCancel: false,
+        variant: 'danger',
+        onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+      });
     }
   };
 
@@ -383,19 +508,21 @@ export default function App() {
     setIsCreateProjectModalOpen(true);
   };
 
-  const handleDeleteProject = async (project: Project) => {
-    const confirmed = window.confirm(`"${project.name}" projesini silmek istediğinize emin misiniz?`);
-
-    if (!confirmed) {
-      return;
-    }
-
-    const updatedData = await deleteProject(project.id);
-    setData(updatedData);
-    setIsProjectDetailModalOpen(false);
-    if (selectedProject?.id === project.id) {
-      setSelectedProject(null);
-    }
+  const handleDeleteProject = (project: Project) => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Projeyi Sil',
+      message: `"${project.name}" projesini silmek istediğinize emin misiniz?`,
+      onConfirm: async () => {
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        const updatedData = await deleteProject(project.id);
+        setData(updatedData);
+        setIsProjectDetailModalOpen(false);
+        if (selectedProject?.id === project.id) {
+          setSelectedProject(null);
+        }
+      }
+    });
   };
 
   const syncNotificationFeed = (updatedData: typeof data, customFeedUpdater?: (prevFeed: Notification[]) => Notification[]) => {
@@ -437,6 +564,8 @@ export default function App() {
     const target = (hasInitializedNotificationFeed ? notificationFeed : data.notifications).find((n) => n.id === notificationId);
     if (!target) return;
 
+    deletedNotificationIds.current.add(notificationId);
+
     if (pendingDeleteNotification) {
       clearTimeout(pendingDeleteRef.current!);
       deleteNotification(pendingDeleteNotification.id).catch(console.error);
@@ -466,6 +595,7 @@ export default function App() {
 
   const handleUndoDeleteNotification = () => {
     if (pendingDeleteNotification) {
+      deletedNotificationIds.current.delete(pendingDeleteNotification.id);
       clearTimeout(pendingDeleteRef.current!);
       setData((prev) => ({
         ...prev,
@@ -565,6 +695,11 @@ export default function App() {
     setData(updatedData);
   };
 
+  const handleUpdateCalendarEvent = async (eventId: string, payload: CreateCalendarEventPayload) => {
+    const updatedData = await updateCalendarEvent(eventId, payload);
+    setData(updatedData);
+  };
+
   const handleDeleteCalendarEvent = async (eventId: string) => {
     const updatedData = await deleteCalendarEvent(eventId);
     setData(updatedData);
@@ -600,15 +735,23 @@ export default function App() {
         setAuditLogs(response.items);
       }
     } catch (updateError) {
-      window.alert(updateError instanceof Error ? updateError.message : 'Kullanici rolu guncellenemedi.');
+      setConfirmModal({
+        isOpen: true,
+        title: 'Hata',
+        message: updateError instanceof Error ? updateError.message : 'Kullanıcı rolü güncellenemedi.',
+        confirmLabel: 'Tamam',
+        showCancel: false,
+        variant: 'danger',
+        onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+      });
     } finally {
       setUpdatingUserRoleId(null);
     }
   };
 
   const handleUpdateTeamMemberDepartment = async (userId: string, department: string) => {
+    setUpdatingUserDepartmentId(userId);
     try {
-      setUpdatingUserDepartmentId(userId);
       const updatedData = await updateUserDepartment(userId, { department });
       setData(updatedData);
       if (data.permissions.canManageTeam) {
@@ -616,9 +759,35 @@ export default function App() {
         setAuditLogs(response.items);
       }
     } catch (updateError) {
-      window.alert(updateError instanceof Error ? updateError.message : 'Kullanici departmani guncellenemedi.');
+      setConfirmModal({
+        isOpen: true,
+        title: 'Hata',
+        message: updateError instanceof Error ? updateError.message : 'Kullanıcı departmanı güncellenemedi.',
+        confirmLabel: 'Tamam',
+        showCancel: false,
+        variant: 'danger',
+        onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+      });
     } finally {
       setUpdatingUserDepartmentId(null);
+    }
+  };
+
+  const handleDeleteTeamMember = async (userId: string) => {
+    try {
+      const updatedData = await deleteTeamMember(userId);
+      setData(updatedData);
+    } catch (error) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Hata',
+        message: error instanceof Error ? error.message : 'Kullanıcı silinemedi.',
+        confirmLabel: 'Tamam',
+        showCancel: false,
+        variant: 'danger',
+        onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+      });
+      throw error;
     }
   };
 
@@ -732,33 +901,59 @@ export default function App() {
         </div>
       </div>
 
-      {taskView === 'kanban' ? (
-        <KanbanBoard
-          tasks={filteredTasks}
-          showHeader={false}
-          onAddTask={canManageTasks ? () => setIsTaskModalOpen(true) : undefined}
-          onTaskClick={handleTaskClick}
-          onMoveTask={handleMoveTaskStatus}
-          currentUser={data.currentUser}
-        />
-      ) : (
-        <TaskList
-          tasks={listTasks}
-          onAddTask={canManageTasks ? () => {
-            setPresetParentTask(null);
-            setIsTaskModalOpen(true);
-          } : undefined}
-          onAddSubtask={canManageTasks ? (task) => {
-            setPresetParentTask(task);
-            setEditingTask(null);
-            setIsTaskModalOpen(true);
-          } : undefined}
-          onTaskClick={handleTaskClick}
-          onEditTask={canManageTasks ? handleEditTask : undefined}
-          onDeleteTask={canManageTasks ? handleDeleteTask : undefined}
-          canManageTasks={canManageTasks}
-        />
-      )}
+      <AnimatePresence mode="wait">
+        {taskView === 'kanban' ? (
+          <motion.div
+            key="kanban-view"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <KanbanBoard
+              tasks={filteredTasks}
+              showHeader={false}
+              onAddTask={canManageTasks ? () => setIsTaskModalOpen(true) : undefined}
+              onTaskClick={handleTaskClick}
+              onMoveTask={handleMoveTaskStatus}
+              currentUser={data.currentUser}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="list-view"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.3 }}
+          >
+            <TaskList
+              tasks={listTasks}
+              onAddTask={
+                canManageTasks
+                  ? () => {
+                      setPresetParentTask(null);
+                      setIsTaskModalOpen(true);
+                    }
+                  : undefined
+              }
+              onAddSubtask={
+                canManageTasks
+                  ? (task) => {
+                      setPresetParentTask(task);
+                      setEditingTask(null);
+                      setIsTaskModalOpen(true);
+                    }
+                  : undefined
+              }
+              onTaskClick={handleTaskClick}
+              onEditTask={canManageTasks ? handleEditTask : undefined}
+              onDeleteTask={canManageTasks ? handleDeleteTask : undefined}
+              canManageTasks={canManageTasks}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 
@@ -821,7 +1016,10 @@ export default function App() {
         return (
           <Calendar
             events={data.calendarEvents}
+            projects={data.projects}
+            tasks={data.tasks}
             onCreateEvent={canManageCalendar ? handleCreateCalendarEvent : undefined}
+            onUpdateEvent={canManageCalendar ? handleUpdateCalendarEvent : undefined}
             onDeleteEvent={canManageCalendar ? handleDeleteCalendarEvent : undefined}
           />
         );
@@ -829,6 +1027,7 @@ export default function App() {
         return (
           <Team
             members={data.teamMembers}
+            projects={data.projects}
             canInvite={data.permissions.canInviteMembers}
             canManageRoles={data.permissions.canManageTeam}
             currentUserId={data.currentUser.id}
@@ -838,6 +1037,7 @@ export default function App() {
             updatingUserDepartmentId={updatingUserDepartmentId}
             auditLogs={auditLogs}
             isAuditLogsLoading={isAuditLogsLoading}
+            onDeleteMember={handleDeleteTeamMember}
           />
         );
       case 'notifications':
@@ -856,7 +1056,15 @@ export default function App() {
           />
         );
       case 'settings':
-        return <Settings currentUser={data.currentUser} />;
+        return (
+          <Settings
+            currentUser={data.currentUser}
+            onDataRefresh={async () => {
+              try { await refreshData(); } catch { /* silent refresh */ }
+            }}
+            onDirtyChange={setIsSettingsDirty}
+          />
+        );
       case 'tasks':
         return renderTasksContent();
       default:
@@ -867,8 +1075,8 @@ export default function App() {
   return (
     <Layout
       activeTab={activeTab}
-      onTabChange={setActiveTab}
-      notifications={data.notifications}
+      onTabChange={handleTabChange}
+      notifications={activeNotifications}
       onReadAllNotifications={handleReadAllNotifications}
       onDeleteNotification={handleDeleteNotification}
       onDeleteAllNotifications={handleDeleteAllNotifications}
@@ -877,7 +1085,18 @@ export default function App() {
       visibleTabs={visibleTabs}
       onLogout={handleLogout}
     >
-      {renderContent()}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTab}
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -15 }}
+          transition={{ duration: 0.3 }}
+          className="min-h-full"
+        >
+          {renderContent()}
+        </motion.div>
+      </AnimatePresence>
 
       <CreateTaskModal
         isOpen={isTaskModalOpen}
@@ -935,17 +1154,29 @@ export default function App() {
       />
 
       {/* Undo Toast */}
-      {pendingDeleteNotification && (
-        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-full bg-slate-900 px-6 py-3 text-sm text-white shadow-xl animate-in slide-in-from-bottom-5">
-          <span>Bildirim silindi.</span>
-          <button
-            onClick={handleUndoDeleteNotification}
-            className="font-bold text-indigo-400 transition-colors hover:text-indigo-300"
+      <AnimatePresence>
+        {pendingDeleteNotification && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: 50, x: '-50%' }}
+            className="fixed bottom-6 left-1/2 z-50 flex items-center gap-4 rounded-full bg-slate-900 px-6 py-3 text-sm text-white shadow-xl"
           >
-            Geri Al
-          </button>
-        </div>
-      )}
+            <span>Bildirim silindi.</span>
+            <button
+              onClick={handleUndoDeleteNotification}
+              className="font-bold text-indigo-400 transition-colors hover:text-indigo-300"
+            >
+              Geri Al
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <ConfirmModal
+        {...confirmModal}
+        onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </Layout>
   );
 }

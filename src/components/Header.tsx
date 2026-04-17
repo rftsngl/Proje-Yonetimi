@@ -1,7 +1,10 @@
 import { Bell, ChevronDown, LogOut, Menu, Search } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import NotificationDropdown from './NotificationDropdown';
 import { Notification, User } from '../types';
+
+import { resolveAvatarUrl } from '../lib/avatar';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -63,7 +66,7 @@ export default function Header({
 
   return (
     <header className="sticky top-0 z-30 w-full border-b border-gray-100 bg-white/80 backdrop-blur-md">
-      <div className="flex h-16 items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="flex h-14 items-center justify-between px-4 sm:px-6 lg:px-8">
         <div className="flex flex-1 items-center gap-4">
           <button onClick={onMenuClick} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 lg:hidden">
             <Menu className="h-6 w-6" />
@@ -123,7 +126,7 @@ export default function Header({
             >
               <img
                 className="h-8 w-8 rounded-full border border-gray-200"
-                src={`https://picsum.photos/seed/${currentUser.avatar}/32/32`}
+                src={resolveAvatarUrl(currentUser.avatar, 32)}
                 alt={currentUser.name}
                 referrerPolicy="no-referrer"
               />
@@ -134,27 +137,35 @@ export default function Header({
               <ChevronDown className="h-4 w-4 text-gray-400 transition-colors group-hover:text-gray-600" />
             </button>
 
-            {isProfileOpen && (
-              <div className="absolute right-0 top-full z-40 mt-3 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-                <div className="border-b border-slate-100 p-4">
-                  <p className="font-bold text-slate-900">{currentUser.name}</p>
-                  <p className="mt-1 text-sm text-slate-500">{currentUser.email}</p>
-                  <p className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
-                    {currentUser.role}
-                  </p>
-                </div>
-                <button
-                  onClick={() => {
-                    setIsProfileOpen(false);
-                    void onLogout?.();
-                  }}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-sm font-bold text-rose-600 transition-colors hover:bg-rose-50"
+            <AnimatePresence>
+              {isProfileOpen && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute right-0 top-full z-40 mt-3 w-64 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl"
                 >
-                  <LogOut className="h-4 w-4" />
-                  Çıkış Yap
-                </button>
-              </div>
-            )}
+                  <div className="border-b border-slate-100 p-4">
+                    <p className="font-bold text-slate-900">{currentUser.name}</p>
+                    <p className="mt-1 text-sm text-slate-500">{currentUser.email}</p>
+                    <p className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600">
+                      {currentUser.role}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsProfileOpen(false);
+                      void onLogout?.();
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-sm font-bold text-rose-600 transition-colors hover:bg-rose-50"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Çıkış Yap
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>

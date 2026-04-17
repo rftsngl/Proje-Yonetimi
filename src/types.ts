@@ -108,6 +108,8 @@ export interface CalendarEvent {
   id: string;
   title: string;
   date: string;
+  endDate?: string;
+  reminderOffset?: number;
   color: string;
   eventType?: string;
 }
@@ -183,6 +185,8 @@ export interface UpdateProjectPayload extends CreateProjectPayload {
 export interface CreateCalendarEventPayload {
   title: string;
   date: string;
+  endDate?: string;
+  reminderOffset?: number;
   color: string;
   eventType: string;
 }
@@ -218,7 +222,7 @@ export interface UserAuditLogItem {
   actorName: string;
   targetUserId: string;
   targetName: string;
-  action: 'role_update' | 'department_update';
+  action: 'role_update' | 'department_update' | 'user_deletion';
   oldValue?: string | null;
   newValue?: string | null;
   createdAt: string;
@@ -234,4 +238,53 @@ export interface TaskTreeItem extends Task {
 
 export interface TaskTreeResponse {
   items: TaskTreeItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Settings types
+// ---------------------------------------------------------------------------
+
+export type ThemeMode = 'light' | 'dark' | 'system';
+export type LanguageCode = 'tr' | 'en';
+
+export interface UserSettings {
+  theme: ThemeMode;
+  language: LanguageCode;
+  notifyTaskAssigned: boolean;
+  notifyProjectUpdates: boolean;
+  notifyDeadlineReminders: boolean;
+}
+
+export interface UserProfileSettings {
+  fullName: string;
+  email: string;
+  role: string;
+  department: string;
+  avatar: string;
+  avatarUrl: string;
+}
+
+export interface SettingsBundle {
+  profile: UserProfileSettings;
+  settings: UserSettings;
+}
+
+export interface UpdateSettingsPayload {
+  theme?: ThemeMode;
+  language?: LanguageCode;
+  notifyTaskAssigned?: boolean;
+  notifyProjectUpdates?: boolean;
+  notifyDeadlineReminders?: boolean;
+}
+
+export interface UpdateProfilePayload {
+  fullName?: string;
+  email?: string;
+  department?: string;
+}
+
+export interface ChangePasswordPayload {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
 }

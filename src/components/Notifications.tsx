@@ -79,7 +79,7 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm">
+      <div className="rounded-3xl border border-slate-100 bg-white shadow-sm">
         <div className="divide-y divide-slate-50">
           {notifications.map((notification, index) => (
             <motion.div

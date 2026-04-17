@@ -46,7 +46,7 @@ export default function NotificationDropdown({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: -8 }}
           transition={{ duration: 0.18 }}
-          className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(24rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-2xl shadow-indigo-900/10"
+          className="absolute right-0 top-[calc(100%+0.75rem)] z-50 w-[min(24rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] rounded-3xl border border-slate-100 bg-white shadow-2xl shadow-indigo-900/10"
         >
           <div className="border-b border-slate-50 bg-white p-4">
             <div className="flex items-center justify-between">

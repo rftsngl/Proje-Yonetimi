@@ -10,7 +10,9 @@ import {
   TrendingUp,
   UserPlus,
 } from 'lucide-react';
+import { motion } from 'motion/react';
 import { ProjectProgress, Stat, Task, User } from '../types';
+import { resolveAvatarUrl } from '../lib/avatar';
 
 interface DashboardProps {
   stats: Stat[];
@@ -29,23 +31,38 @@ const iconMap: Record<string, any> = {
 
 export default function Dashboard({ stats, upcomingTasks, projectProgress, currentUser, onNavigateFromStat }: DashboardProps) {
   return (
-    <div className="animate-in space-y-8 duration-500 fade-in">
+    <motion.div 
+      initial={{ opacity: 0, y: 15 }} 
+      animate={{ opacity: 1, y: 0 }} 
+      transition={{ duration: 0.4 }} 
+      className="space-y-8"
+    >
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Hoş geldin, {currentUser.name.split(' ')[0]}</h1>
         <p className="mt-1 text-slate-500">{currentUser.role} rolüne göre görünümün ve özet verilerin dinamik olarak hazırlandı.</p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <motion.div 
+        className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4"
+        initial="hidden" animate="visible"
+        variants={{ visible: { transition: { staggerChildren: 0.08 } } }}
+      >
         {stats.map((stat, index) => {
           const Icon = iconMap[stat.iconName];
           const targetTab = stat.iconName === 'Briefcase' ? 'projects' : 'tasks';
 
           return (
-            <button
+            <motion.button
+              variants={{ 
+                hidden: { opacity: 0, y: 20 }, 
+                visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } } 
+              }}
+              whileHover={{ y: -5, boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)' }}
+              whileActive={{ scale: 0.98 }}
               key={index}
               type="button"
               onClick={() => onNavigateFromStat?.(targetTab)}
-              className="rounded-2xl border border-slate-100 bg-white p-6 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+              className="rounded-2xl border border-slate-100 bg-white p-6 text-left shadow-sm transition-shadow"
             >
               <div className="flex items-start justify-between">
                 <div className={`rounded-xl p-3 ${stat.bg} ${stat.color}`}>{Icon && <Icon className="h-6 w-6" />}</div>
@@ -58,25 +75,41 @@ export default function Dashboard({ stats, upcomingTasks, projectProgress, curre
                 <h3 className="text-sm font-medium text-slate-500">{stat.label}</h3>
                 <p className="mt-1 text-2xl font-bold text-slate-900">{stat.value}</p>
               </div>
-            </button>
+            </motion.button>
           );
         })}
-      </div>
+      </motion.div>
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-        <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm lg:col-span-1">
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.3 }}
+          className="flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm lg:col-span-1"
+        >
           <div className="flex items-center justify-between border-b border-slate-50 p-6">
             <h2 className="text-lg font-bold text-slate-900">Yaklaşan Görevler</h2>
             <button className="text-slate-400 transition-colors hover:text-slate-600">
               <MoreVertical className="h-5 w-5" />
             </button>
           </div>
-          <div className="flex-1 divide-y divide-slate-50">
+          <motion.div 
+            className="flex-1 divide-y divide-slate-50"
+            initial="hidden" animate="visible"
+            variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
+          >
             {upcomingTasks.map((task) => (
-              <div key={task.id} className="group flex cursor-pointer items-center justify-between p-4 transition-colors hover:bg-slate-50">
+              <motion.div 
+                variants={{ 
+                  hidden: { opacity: 0, x: -20 }, 
+                  visible: { opacity: 1, x: 0, transition: { ease: 'easeOut' } } 
+                }}
+                key={task.id} 
+                className="group flex cursor-pointer items-center justify-between p-4 transition-colors hover:bg-slate-50"
+              >
                 <div className="flex items-center gap-4">
                   <img
-                    src={`https://picsum.photos/seed/${task.assignees[0] || task.id}/40/40`}
+                    src={resolveAvatarUrl(task.assignees[0] || task.id, 40)}
                     alt="User"
                     className="h-10 w-10 rounded-full border-2 border-white shadow-sm"
                     referrerPolicy="no-referrer"
@@ -102,9 +135,9 @@ export default function Dashboard({ stats, upcomingTasks, projectProgress, curre
                 >
                   {task.priority}
                 </span>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
           <button
             type="button"
             onClick={() => onNavigateFromStat?.('tasks')}
@@ -112,28 +145,46 @@ export default function Dashboard({ stats, upcomingTasks, projectProgress, curre
           >
             Tüm Görevleri Gör
           </button>
-        </div>
+        </motion.div>
 
-        <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm lg:col-span-1">
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm lg:col-span-1"
+        >
           <div className="flex items-center justify-between border-b border-slate-50 p-6">
             <h2 className="text-lg font-bold text-slate-900">Proje İlerleme</h2>
             <button className="text-slate-400 transition-colors hover:text-slate-600">
               <MoreVertical className="h-5 w-5" />
             </button>
           </div>
-          <div className="flex-1 space-y-6 p-6">
+          <motion.div 
+            className="flex-1 space-y-6 p-6"
+            initial="hidden" animate="visible"
+            variants={{ visible: { transition: { staggerChildren: 0.1, delayChildren: 0.5 } } }}
+          >
             {projectProgress.map((project) => (
-              <div key={project.id} className="space-y-2">
+              <motion.div 
+                variants={{ hidden: { opacity: 0, x: 10 }, visible: { opacity: 1, x: 0 } }}
+                key={project.id} 
+                className="space-y-2"
+              >
                 <div className="flex items-center justify-between">
                   <h4 className="max-w-[180px] truncate text-sm font-semibold text-slate-700">{project.name}</h4>
                   <span className="text-xs font-bold text-slate-900">%{project.progress}</span>
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                  <div className={`h-full ${project.color} transition-all duration-1000 ease-out`} style={{ width: `${project.progress}%` }} />
+                  <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${project.progress}%` }}
+                    transition={{ duration: 1, ease: 'easeOut' }}
+                    className={`h-full ${project.color}`}
+                  />
                 </div>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
           <div className="mt-2 px-6 pb-6">
             <div className="flex items-center justify-between rounded-xl bg-slate-50 p-4">
               <div>
@@ -145,9 +196,14 @@ export default function Dashboard({ stats, upcomingTasks, projectProgress, curre
               </button>
             </div>
           </div>
-        </div>
+        </motion.div>
 
-        <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm lg:col-span-1">
+        <motion.div 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.5 }}
+          className="flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm lg:col-span-1"
+        >
           <div className="flex items-center justify-between border-b border-slate-50 p-6">
             <h2 className="text-lg font-bold text-slate-900">Son Aktiviteler</h2>
             <button className="text-slate-400 transition-colors hover:text-slate-600">
@@ -188,8 +244,8 @@ export default function Dashboard({ stats, upcomingTasks, projectProgress, curre
           <button className="w-full border-t border-slate-50 py-4 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50">
             Tüm Aktiviteyi Gör
           </button>
-        </div>
+        </motion.div>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -12,6 +12,8 @@ const baseConfig = {
   connectionLimit: 10,
   queueLimit: 0,
   multipleStatements: true,
+  charset: 'utf8mb4',
+  timezone: '+00:00',
 } as const;
 
 export const ensureDatabaseExists = async () => {

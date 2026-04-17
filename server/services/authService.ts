@@ -126,7 +126,7 @@ export const registerUser = async (payload: {
   const user = await getUserById(userId);
 
   if (!user) {
-    throw new Error('Kayit sonrasinda kullanici bulunamadi.');
+    throw new Error('Kayıt sonrasında kullanıcı bulunamadı.');
   }
 
   return {

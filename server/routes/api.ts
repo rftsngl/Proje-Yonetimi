@@ -29,12 +29,22 @@ import {
   updateTaskStatus,
   updateUserDepartment,
   updateUserRole,
+  updateCalendarEvent,
   deleteNotification,
   deleteAllNotifications,
   setNotificationReadState,
   getPaginatedNotifications,
+  deleteUser,
 } from '../services/dashboardService.js';
 import { getUserFromToken, loginUser, logoutUser, registerUser } from '../services/authService.js';
+import {
+  changeOwnPassword,
+  getUserSettingsBundle,
+  resetUserSettings,
+  updateOwnAvatar,
+  updateOwnProfile,
+  updateUserSettings,
+} from '../services/settingsService.js';
 import { createEntityId } from '../utils/formatters.js';
 
 export const apiRouter = Router();
@@ -52,6 +62,29 @@ const upload = multer({
   }),
   limits: {
     fileSize: 25 * 1024 * 1024,
+  },
+});
+
+const avatarUploadDirectory = path.join(process.cwd(), 'uploads', 'avatars');
+fs.mkdirSync(avatarUploadDirectory, { recursive: true });
+
+const avatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => callback(null, avatarUploadDirectory),
+    filename: (_req, file, callback) => {
+      const extension = path.extname(file.originalname) || '';
+      callback(null, `${createEntityId('AVT')}${extension}`);
+    },
+  }),
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+  },
+  fileFilter: (_req, file, callback) => {
+    if (file.mimetype.startsWith('image/')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Sadece gorsel dosyalari yuklenebilir.'));
+    }
   },
 });
 
@@ -84,14 +117,14 @@ const getAuthorizedContext = async (request: Request, response: Response) => {
   const token = getRequestToken(request.headers.authorization);
 
   if (!token) {
-    response.status(401).json({ message: 'Oturum bulunamadi.' });
+    response.status(401).json({ message: 'Oturum bulunamadı.' });
     return null;
   }
 
   const session = await getUserFromToken(token);
 
   if (!session) {
-    response.status(401).json({ message: 'Oturum gecersiz veya suresi dolmus.' });
+    response.status(401).json({ message: 'Oturum gecersiz veya süresi dolmuş.' });
     return null;
   }
 
@@ -254,7 +287,7 @@ apiRouter.post('/calendar-events', async (req, res, next) => {
       date,
       color: color.trim(),
       eventType: eventType.trim(),
-    });
+    }, session.user.id);
 
     return res.status(201).json(await getBootstrapData(session.user));
   } catch (error) {
@@ -274,10 +307,45 @@ apiRouter.delete('/calendar-events/:eventId', async (req, res, next) => {
       return;
     }
 
-    const deleted = await deleteCalendarEvent(req.params.eventId);
+    const deleted = await deleteCalendarEvent(req.params.eventId, session.user.id);
 
     if (!deleted) {
-      return res.status(404).json({ message: 'Takvim etkinligi bulunamadi.' });
+      return res.status(404).json({ message: 'Takvim etkinligi bulunamadı.' });
+    }
+
+    return res.json(await getBootstrapData(session.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.patch('/calendar-events/:eventId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+
+    if (!session) {
+      return;
+    }
+
+    if (!requireManagementPermission(session.permissions.canManageCalendar, res)) {
+      return;
+    }
+
+    const { title, date, color, eventType } = req.body;
+
+    if (!title?.trim() || !date || !color?.trim() || !eventType?.trim()) {
+      return res.status(400).json({ message: 'Takvim etkinliği için zorunlu alanlar eksik.' });
+    }
+
+    const updated = await updateCalendarEvent(req.params.eventId, {
+      title: title.trim(),
+      date,
+      color: color.trim(),
+      eventType: eventType.trim(),
+    }, session.user.id);
+
+    if (!updated) {
+      return res.status(404).json({ message: 'Takvim etkinliği bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -304,7 +372,7 @@ apiRouter.post('/projects', async (req, res, next) => {
       return res.status(400).json({ message: 'Zorunlu proje alanlari eksik.' });
     }
 
-    await createProject({ name, description, category, managerId, startDate, endDate, themeColor });
+    await createProject({ name, description, category, managerId, startDate, endDate, themeColor }, session.user.id);
     return res.status(201).json(await getBootstrapData(session.user));
   } catch (error) {
     return next(error);
@@ -330,7 +398,7 @@ apiRouter.patch('/projects/:projectId', async (req, res, next) => {
       return res.status(400).json({ message: 'Zorunlu proje alanlari eksik.' });
     }
 
-    await updateProject(projectId, { name, description, category, managerId, startDate, endDate, themeColor, progress, status });
+    await updateProject(projectId, { name, description, category, managerId, startDate, endDate, themeColor, progress, status }, session.user.id);
     return res.json(await getBootstrapData(session.user));
   } catch (error) {
     return next(error);
@@ -349,10 +417,10 @@ apiRouter.delete('/projects/:projectId', async (req, res, next) => {
       return;
     }
 
-    const deleted = await deleteProject(req.params.projectId);
+    const deleted = await deleteProject(req.params.projectId, session.user.id);
 
     if (!deleted) {
-      return res.status(404).json({ message: 'Proje bulunamadi.' });
+      return res.status(404).json({ message: 'Proje bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -376,13 +444,13 @@ apiRouter.post('/projects/:projectId/members', async (req, res, next) => {
     const { userId } = req.body;
 
     if (!userId) {
-      return res.status(400).json({ message: 'Kullanici secimi zorunludur.' });
+      return res.status(400).json({ message: 'Kullanici seçimi zorunludur.' });
     }
 
-    const added = await addProjectMember(req.params.projectId, userId);
+    const added = await addProjectMember(req.params.projectId, userId, session.user.id);
 
     if (!added) {
-      return res.status(404).json({ message: 'Proje veya kullanici bulunamadi.' });
+      return res.status(404).json({ message: 'Proje veya kullanıcı bulunamadı.' });
     }
 
     return res.status(201).json(await getBootstrapData(session.user));
@@ -409,7 +477,7 @@ apiRouter.post('/tasks', async (req, res, next) => {
       return res.status(400).json({ message: 'Zorunlu gorev alanlari eksik.' });
     }
 
-    await createTask({ title, description: description || '', projectId, parentTaskId, assigneeIds, startDate, dueDate, priority });
+    await createTask({ title, description: description || '', projectId, parentTaskId, assigneeIds, startDate, dueDate, priority }, session.user.id);
     return res.status(201).json(await getBootstrapData(session.user));
   } catch (error) {
     return next(error);
@@ -455,7 +523,7 @@ apiRouter.patch('/tasks/:taskId', async (req, res, next) => {
       return res.status(400).json({ message: 'Zorunlu gorev alanlari eksik.' });
     }
 
-    await updateTask(req.params.taskId, { title, description: description || '', projectId, parentTaskId, assigneeIds, startDate, dueDate, priority, status });
+    await updateTask(req.params.taskId, { title, description: description || '', projectId, parentTaskId, assigneeIds, startDate, dueDate, priority, status }, session.user.id);
     return res.json(await getBootstrapData(session.user));
   } catch (error) {
     return next(error);
@@ -483,7 +551,7 @@ apiRouter.patch('/tasks/:taskId/parent', async (req, res, next) => {
     const updated = await updateTaskParent(req.params.taskId, projectId.trim(), parentTaskId || null);
 
     if (!updated) {
-      return res.status(404).json({ message: 'Gorev bulunamadi.' });
+      return res.status(404).json({ message: 'Gorev bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -518,7 +586,7 @@ apiRouter.patch('/tasks/:taskId/status', async (req, res, next) => {
     const updated = await updateTaskStatus(req.params.taskId, status);
 
     if (!updated) {
-      return res.status(404).json({ message: 'Gorev bulunamadi.' });
+      return res.status(404).json({ message: 'Gorev bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -552,7 +620,7 @@ apiRouter.patch('/users/:userId/role', async (req, res, next) => {
 
     const targetUser = await getUserRoleAndDepartment(userId);
     if (!targetUser) {
-      return res.status(404).json({ message: 'Kullanici bulunamadi.' });
+      return res.status(404).json({ message: 'Kullanici bulunamadı.' });
     }
 
     const nextRole = role.trim();
@@ -566,7 +634,7 @@ apiRouter.patch('/users/:userId/role', async (req, res, next) => {
     const updated = await updateUserRole(userId, nextRole);
 
     if (!updated) {
-      return res.status(404).json({ message: 'Kullanici bulunamadi.' });
+      return res.status(404).json({ message: 'Kullanici bulunamadı.' });
     }
 
     await createUserAuditLog({
@@ -611,7 +679,7 @@ apiRouter.patch('/users/:userId/department', async (req, res, next) => {
 
     const targetUser = await getUserRoleAndDepartment(userId);
     if (!targetUser) {
-      return res.status(404).json({ message: 'Kullanici bulunamadi.' });
+      return res.status(404).json({ message: 'Kullanici bulunamadı.' });
     }
 
     const nextDepartment = department.trim();
@@ -619,7 +687,7 @@ apiRouter.patch('/users/:userId/department', async (req, res, next) => {
     const updated = await updateUserDepartment(userId, nextDepartment);
 
     if (!updated) {
-      return res.status(404).json({ message: 'Kullanici bulunamadi.' });
+      return res.status(404).json({ message: 'Kullanici bulunamadı.' });
     }
 
     await createUserAuditLog({
@@ -629,6 +697,39 @@ apiRouter.patch('/users/:userId/department', async (req, res, next) => {
       oldValue: targetUser.department,
       newValue: nextDepartment,
     });
+
+    return res.json(await getBootstrapData(session.user));
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return next(error);
+  }
+});
+
+apiRouter.delete('/users/:userId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+
+    if (!session) {
+      return;
+    }
+
+    if (!requireManagementPermission(session.permissions.canManageTeam, res)) {
+      return;
+    }
+
+    const { userId } = req.params;
+
+    if (userId === session.user.id) {
+      return res.status(400).json({ message: 'Kendi hesabınızı buradan silemezsiniz.' });
+    }
+
+    const deleted = await deleteUser(userId, { actorUserId: session.user.id });
+
+    if (!deleted) {
+      return res.status(404).json({ message: 'Kullanıcı bulunamadı.' });
+    }
 
     return res.json(await getBootstrapData(session.user));
   } catch (error) {
@@ -671,10 +772,10 @@ apiRouter.delete('/tasks/:taskId', async (req, res, next) => {
       return;
     }
 
-    const deleted = await deleteTask(req.params.taskId);
+    const deleted = await deleteTask(req.params.taskId, session.user.id);
 
     if (!deleted) {
-      return res.status(404).json({ message: 'Gorev bulunamadi.' });
+      return res.status(404).json({ message: 'Gorev bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -700,7 +801,7 @@ apiRouter.post('/tasks/:taskId/comments', async (req, res, next) => {
     const created = await addTaskComment(req.params.taskId, session.user.id, content.trim());
 
     if (!created) {
-      return res.status(404).json({ message: 'Gorev veya kullanici bulunamadi.' });
+      return res.status(404).json({ message: 'Görev veya kullanıcı bulunamadı.' });
     }
 
     return res.status(201).json(await getBootstrapData(session.user));
@@ -726,7 +827,7 @@ apiRouter.patch('/tasks/:taskId/comments/:commentId', async (req, res, next) => 
     const updated = await updateTaskComment(req.params.taskId, req.params.commentId, content.trim());
 
     if (!updated) {
-      return res.status(404).json({ message: 'Yorum bulunamadi.' });
+      return res.status(404).json({ message: 'Yorum bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -746,7 +847,7 @@ apiRouter.delete('/tasks/:taskId/comments/:commentId', async (req, res, next) =>
     const deleted = await deleteTaskComment(req.params.taskId, req.params.commentId);
 
     if (!deleted) {
-      return res.status(404).json({ message: 'Yorum bulunamadi.' });
+      return res.status(404).json({ message: 'Yorum bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -770,13 +871,13 @@ apiRouter.post('/tasks/:taskId/assignees', async (req, res, next) => {
     const { userId } = req.body;
 
     if (!userId) {
-      return res.status(400).json({ message: 'Kullanici secimi zorunludur.' });
+      return res.status(400).json({ message: 'Kullanici seçimi zorunludur.' });
     }
 
-    const added = await addTaskAssignee(req.params.taskId, userId);
+    const added = await addTaskAssignee(req.params.taskId, userId, session.user.id);
 
     if (!added) {
-      return res.status(404).json({ message: 'Gorev veya kullanici bulunamadi.' });
+      return res.status(404).json({ message: 'Görev veya kullanıcı bulunamadı.' });
     }
 
     return res.status(201).json(await getBootstrapData(session.user));
@@ -800,7 +901,7 @@ apiRouter.delete('/tasks/:taskId/assignees/:userId', async (req, res, next) => {
     const deleted = await removeTaskAssignee(req.params.taskId, req.params.userId);
 
     if (!deleted) {
-      return res.status(404).json({ message: 'Gorev atamasi bulunamadi.' });
+      return res.status(404).json({ message: 'Gorev atamasi bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -829,11 +930,11 @@ apiRouter.post('/tasks/:taskId/attachments', upload.single('file'), async (req, 
       mimeType: req.file.mimetype,
       fileSizeBytes: req.file.size,
       filePath: `/uploads/tasks/${req.file.filename}`,
-    });
+    }, session.user.id);
 
     if (!created) {
       fs.unlink(req.file.path, () => undefined);
-      return res.status(404).json({ message: 'Gorev bulunamadi.' });
+      return res.status(404).json({ message: 'Gorev bulunamadı.' });
     }
 
     return res.status(201).json(await getBootstrapData(session.user));
@@ -883,7 +984,7 @@ apiRouter.delete('/notifications/:notificationId', async (req, res, next) => {
     const deleted = await deleteNotification(req.params.notificationId, session.user.id);
 
     if (!deleted) {
-      return res.status(404).json({ message: 'Bildirim bulunamadi.' });
+      return res.status(404).json({ message: 'Bildirim bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -903,13 +1004,13 @@ apiRouter.patch('/notifications/:notificationId/read', async (req, res, next) =>
     const { read } = req.body;
     
     if (typeof read !== 'boolean') {
-      return res.status(400).json({ message: 'Gecersiz "read" degeri.' });
+      return res.status(400).json({ message: 'Geçersiz "read" degeri.' });
     }
 
     const updated = await setNotificationReadState(req.params.notificationId, session.user.id, read);
 
     if (!updated) {
-      return res.status(404).json({ message: 'Bildirim bulunamadi.' });
+      return res.status(404).json({ message: 'Bildirim bulunamadı.' });
     }
 
     return res.json(await getBootstrapData(session.user));
@@ -929,6 +1030,99 @@ apiRouter.get('/notifications', async (req, res, next) => {
 
     const result = await getPaginatedNotifications(session.user.id, limit, beforeCreatedAt, beforeId);
     return res.json(result);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// =========================================================================
+// Settings routes
+// =========================================================================
+
+apiRouter.get('/settings', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    const bundle = await getUserSettingsBundle(session.user.id);
+    if (!bundle) {
+      return res.status(404).json({ message: 'Kullanici bulunamadı.' });
+    }
+    return res.json(bundle);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.put('/settings', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    const bundle = await updateUserSettings(session.user.id, req.body);
+    return res.json(bundle);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return next(error);
+  }
+});
+
+apiRouter.put('/settings/profile', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    const bundle = await updateOwnProfile(session.user.id, req.body);
+    return res.json(bundle);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return next(error);
+  }
+});
+
+apiRouter.put('/settings/password', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    await changeOwnPassword(session.user.id, req.body);
+    return res.json({ ok: true, message: 'Sifre basariyla guncellendi.' });
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return next(error);
+  }
+});
+
+apiRouter.post('/settings/reset', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    const bundle = await resetUserSettings(session.user.id);
+    return res.json(bundle);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.post('/settings/avatar', avatarUpload.single('avatar'), async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    if (!req.file) {
+      return res.status(400).json({ message: 'Yuklenecek gorsel dosyasi zorunludur.' });
+    }
+
+    const avatarPath = `/uploads/avatars/${req.file.filename}`;
+    const bundle = await updateOwnAvatar(session.user.id, avatarPath);
+    return res.json(bundle);
   } catch (error) {
     return next(error);
   }

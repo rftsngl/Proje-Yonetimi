@@ -2,6 +2,7 @@ import { useState, ReactNode } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
 import { Notification, User } from '../types';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface LayoutProps {
   children: ReactNode;
@@ -57,9 +58,19 @@ export default function Layout({
           onLogout={onLogout}
         />
         
-        <main className="flex-1 overflow-x-hidden p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 overflow-x-hidden p-4 sm:p-5 lg:p-6">
           <div className="mx-auto max-w-7xl min-w-0">
-            {children}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 5 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -5 }}
+                transition={{ duration: 0.2 }}
+              >
+                {children}
+              </motion.div>
+            </AnimatePresence>
           </div>
         </main>
       </div>

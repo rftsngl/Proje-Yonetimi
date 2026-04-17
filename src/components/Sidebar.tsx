@@ -9,6 +9,8 @@ import {
   X,
 } from 'lucide-react';
 import { User } from '../types';
+import { resolveAvatarUrl } from '../lib/avatar';
+import { motion } from 'motion/react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -61,11 +63,17 @@ export default function Sidebar({ isOpen, onClose, activeTab, onTabChange, curre
             </button>
           </div>
 
-          <nav className="mt-4 flex-1 space-y-1 px-4">
+          <motion.nav 
+            className="mt-4 flex-1 space-y-1 px-4"
+            initial="hidden" animate="visible"
+            variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
+          >
             {visibleTabs.map((item) => {
               const Icon = iconMap[item.id as keyof typeof iconMap] || Briefcase;
               return (
-                <button
+                <motion.button
+                  variants={{ hidden: { opacity: 0, x: -10 }, visible: { opacity: 1, x: 0 } }}
+                  whileTap={{ scale: 0.98 }}
                   key={item.id}
                   onClick={() => {
                     onTabChange(item.id);
@@ -79,15 +87,15 @@ export default function Sidebar({ isOpen, onClose, activeTab, onTabChange, curre
                 >
                   <Icon className={`h-5 w-5 ${activeTab === item.id ? 'text-indigo-600' : 'group-hover:text-indigo-600'}`} />
                   <span>{item.label}</span>
-                </button>
+                </motion.button>
               );
             })}
-          </nav>
+          </motion.nav>
 
           <div className="border-t border-gray-100 p-4">
             <div className="flex cursor-pointer items-center gap-3 rounded-xl p-2 transition-colors hover:bg-gray-50">
               <img
-                src={`https://picsum.photos/seed/${currentUser.avatar}/40/40`}
+                src={resolveAvatarUrl(currentUser.avatar, 40)}
                 alt={currentUser.name}
                 className="h-10 w-10 rounded-full border-2 border-white shadow-sm"
                 referrerPolicy="no-referrer"

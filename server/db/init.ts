@@ -108,6 +108,7 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   date DATE NOT NULL,
   color VARCHAR(64) NOT NULL,
   event_type VARCHAR(64) NOT NULL,
+  reminder_offset INT DEFAULT 0,
   project_id VARCHAR(32) DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_calendar_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
@@ -126,10 +127,23 @@ CREATE TABLE IF NOT EXISTS user_audit_logs (
   id VARCHAR(32) PRIMARY KEY,
   actor_user_id VARCHAR(32) NOT NULL,
   target_user_id VARCHAR(32) NOT NULL,
-  action ENUM('role_update', 'department_update') NOT NULL,
+  action ENUM('role_update', 'department_update', 'user_deletion') NOT NULL,
   old_value VARCHAR(191) DEFAULT NULL,
   new_value VARCHAR(191) DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_settings (
+  id VARCHAR(32) PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL UNIQUE,
+  theme ENUM('light','dark','system') NOT NULL DEFAULT 'light',
+  language VARCHAR(8) NOT NULL DEFAULT 'tr',
+  notify_task_assigned BOOLEAN NOT NULL DEFAULT TRUE,
+  notify_project_updates BOOLEAN NOT NULL DEFAULT TRUE,
+  notify_deadline_reminders BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_user_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 `;
 
@@ -193,6 +207,14 @@ const attachmentSeedStatements = [
   `UPDATE tasks t SET attachments_count = (SELECT COUNT(*) FROM task_attachments ta WHERE ta.task_id = t.id)`,
 ];
 
+const auditLogSeedStatements = [
+  `INSERT IGNORE INTO user_audit_logs (id, actor_user_id, target_user_id, action, old_value, new_value, created_at) VALUES
+    ('LOG-001', 'user1', 'user2', 'role_update', 'Developer', 'Senior Developer', DATE_SUB(NOW(), INTERVAL 2 DAY)),
+    ('LOG-002', 'user1', 'user3', 'department_update', 'Yazılım', 'Tasarım', DATE_SUB(NOW(), INTERVAL 5 DAY)),
+    ('LOG-003', 'user1', 'user5', 'role_update', 'Junior Developer', 'Frontend Developer', DATE_SUB(NOW(), INTERVAL 1 DAY)),
+    ('LOG-004', 'user1', 'user1', 'role_update', 'Manager', 'Admin', DATE_SUB(NOW(), INTERVAL 15 DAY))`
+];
+
 const ensureColumnExists = async (tableName: string, columnName: string, definition: string) => {
   const pool = getPool();
   const [rows] = await pool.query<(RowDataPacket & { total: number })[]>(
@@ -221,6 +243,27 @@ export const initializeDatabase = async () => {
   await ensureColumnExists('users', 'password_hash', 'VARCHAR(255) DEFAULT NULL');
   await ensureColumnExists('tasks', 'parent_task_id', 'VARCHAR(32) DEFAULT NULL');
   await ensureColumnExists('tasks', 'start_date', 'DATE DEFAULT NULL');
+  await ensureColumnExists('calendar_events', 'end_date', 'DATE DEFAULT NULL');
+
+  // Migrasyon: Önceki sürümde ASCII-safe yazılmış ENUM değerleri varsa Türkçe'ye çevir
+  // Bu sorgular idempotent'tir (eğer zaten doğruysa etkilemez)
+  await pool.query(`UPDATE tasks SET status = 'Yapılacak'  WHERE status = 'Yapilacak'`).catch(() => null);
+  await pool.query(`UPDATE tasks SET status = 'Tamamlandı' WHERE status = 'Tamamlandi'`).catch(() => null);
+  await pool.query(`UPDATE tasks SET priority = 'Yüksek'   WHERE priority = 'Yuksek'`).catch(() => null);
+  await pool.query(`UPDATE tasks SET priority = 'Düşük'    WHERE priority = 'Dusuk'`).catch(() => null);
+  await pool.query(`UPDATE projects SET status = 'Tamamlandı' WHERE status = 'Tamamlandi'`).catch(() => null);
+
+  // ENUM tanımlarını utf8mb4 charset ile Türkçe değerlere güncelle
+  await pool.query(`
+    ALTER TABLE tasks
+      MODIFY COLUMN status   ENUM('Yapılacak', 'Devam Ediyor', 'Tamamlandı', 'Gecikti') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Yapılacak',
+      MODIFY COLUMN priority ENUM('Yüksek', 'Orta', 'Düşük') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Orta'
+  `).catch(() => null);
+
+  await pool.query(`
+    ALTER TABLE projects
+      MODIFY COLUMN status ENUM('Aktif', 'Tamamlandı') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Aktif'
+  `).catch(() => null);
 
   const [rows] = await pool.query<(RowDataPacket & { total: number })[]>('SELECT COUNT(*) AS total FROM users');
   if (!rows[0]?.total) {
@@ -243,5 +286,39 @@ export const initializeDatabase = async () => {
     }
   }
 
+  const [auditLogRows] = await pool.query<(RowDataPacket & { total: number })[]>('SELECT COUNT(*) AS total FROM user_audit_logs');
+  if (!auditLogRows[0]?.total) {
+    for (const statement of auditLogSeedStatements) {
+      await pool.query(statement);
+    }
+  }
+
   await seedMissingPasswords('123456');
+
+  // Seed default settings for users without a settings row
+  await pool.query(`
+    INSERT INTO user_settings (id, user_id)
+    SELECT CONCAT('USET-', u.id), u.id
+    FROM users u
+    LEFT JOIN user_settings us ON us.user_id = u.id
+    WHERE us.id IS NULL
+  `);
+
+  // Güvenli Migration: reminder_offset sütununu kontrol et ve yoksa ekle
+  try {
+    await pool.query('ALTER TABLE calendar_events ADD COLUMN reminder_offset INT DEFAULT 0 AFTER event_type');
+    console.log('Migration: reminder_offset sütunu başarıyla eklendi.');
+  } catch (error: any) {
+    if (error.code !== 'ER_DUP_COLUMN_NAME') {
+      console.error('Migration hatası (reminder_offset):', error);
+    }
+  }
+
+  // Güvenli Migration: Varsayılan temayı 'light' yap ve mevcut 'system' olanları güncelle
+  try {
+    await pool.query("UPDATE user_settings SET theme = 'light' WHERE theme = 'system'");
+    console.log("Migration: Mevcut 'system' temaları 'light' olarak güncellendi.");
+  } catch (error) {
+    console.error('Migration hatası (theme update):', error);
+  }
 };
