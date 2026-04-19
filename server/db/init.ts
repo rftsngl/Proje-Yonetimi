@@ -154,7 +154,8 @@ const baseSeedStatements = [
     ('user3', 'Mehmet Öz', 'user3', 'UI/UX Designer', 'mehmet@zodiac.com', 'Busy', '10 dk önce', 'Tasarım'),
     ('user4', 'Zeynep Ak', 'user4', 'QA Engineer', 'zeynep@zodiac.com', 'Offline', '1 saat önce', 'Yazılım'),
     ('user5', 'Can Demir', 'user5', 'Frontend Developer', 'can@zodiac.com', 'Online', '5 dk önce', 'Yazılım'),
-    ('user6', 'Selin Yılmaz', 'user6', 'Product Manager', 'selin@zodiac.com', 'Online', 'Şimdi', 'Ürün')`,
+    ('user6', 'Selin Yılmaz', 'user6', 'Product Manager', 'selin@zodiac.com', 'Online', 'Şimdi', 'Ürün'),
+    ('user7', 'Örnek Kullanıcı', 'user7', 'Admin', 'ornek@zodiac.com', 'Offline', NULL, 'Genel')`,
   `INSERT IGNORE INTO projects (id, name, description, manager_id, progress, start_date, end_date, status, category, theme_color) VALUES
     ('PRJ-001', 'E-Ticaret Mobil Uygulama', 'Yeni nesil alışveriş deneyimi için React Native tabanlı mobil uygulama geliştirme süreci.', 'user1', 75, '2026-03-01', '2026-04-08', 'Aktif', 'Mobil Geliştirme', 'bg-indigo-600'),
     ('PRJ-002', 'Kurumsal Web Sitesi', 'Şirketin dijital varlığını güçlendirmek amacıyla modern ve responsive web sitesi tasarımı.', 'user2', 40, '2026-03-05', '2026-05-11', 'Aktif', 'Web Tasarım', 'bg-blue-500'),
@@ -241,9 +242,19 @@ export const initializeDatabase = async () => {
   await ensureColumnExists('task_attachments', 'file_size_bytes', 'BIGINT DEFAULT NULL');
   await ensureColumnExists('task_attachments', 'file_path', 'VARCHAR(255) DEFAULT NULL');
   await ensureColumnExists('users', 'password_hash', 'VARCHAR(255) DEFAULT NULL');
+  await ensureColumnExists('users', 'department', 'VARCHAR(120) DEFAULT NULL');
   await ensureColumnExists('tasks', 'parent_task_id', 'VARCHAR(32) DEFAULT NULL');
   await ensureColumnExists('tasks', 'start_date', 'DATE DEFAULT NULL');
+  await ensureColumnExists('tasks', 'comments_count', 'INT NOT NULL DEFAULT 0');
+  await ensureColumnExists('tasks', 'attachments_count', 'INT NOT NULL DEFAULT 0');
   await ensureColumnExists('calendar_events', 'end_date', 'DATE DEFAULT NULL');
+  await ensureColumnExists('calendar_events', 'reminder_offset', 'INT DEFAULT 0 AFTER event_type');
+  await ensureColumnExists('notifications', 'entity_type', 'VARCHAR(32) DEFAULT NULL AFTER type');
+  await ensureColumnExists('notifications', 'entity_id', 'VARCHAR(32) DEFAULT NULL AFTER entity_type');
+  await ensureColumnExists('user_settings', 'notify_task_assigned', 'BOOLEAN NOT NULL DEFAULT TRUE');
+  await ensureColumnExists('user_settings', 'notify_project_updates', 'BOOLEAN NOT NULL DEFAULT TRUE');
+  await ensureColumnExists('user_settings', 'notify_deadline_reminders', 'BOOLEAN NOT NULL DEFAULT TRUE');
+
 
   // Migrasyon: Önceki sürümde ASCII-safe yazılmış ENUM değerleri varsa Türkçe'ye çevir
   // Bu sorgular idempotent'tir (eğer zaten doğruysa etkilemez)
@@ -304,15 +315,7 @@ export const initializeDatabase = async () => {
     WHERE us.id IS NULL
   `);
 
-  // Güvenli Migration: reminder_offset sütununu kontrol et ve yoksa ekle
-  try {
-    await pool.query('ALTER TABLE calendar_events ADD COLUMN reminder_offset INT DEFAULT 0 AFTER event_type');
-    console.log('Migration: reminder_offset sütunu başarıyla eklendi.');
-  } catch (error: any) {
-    if (error.code !== 'ER_DUP_COLUMN_NAME') {
-      console.error('Migration hatası (reminder_offset):', error);
-    }
-  }
+
 
   // Güvenli Migration: Varsayılan temayı 'light' yap ve mevcut 'system' olanları güncelle
   try {
