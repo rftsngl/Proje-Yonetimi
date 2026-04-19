@@ -276,7 +276,7 @@ apiRouter.post('/calendar-events', async (req, res, next) => {
       return;
     }
 
-    const { title, date, color, eventType } = req.body;
+    const { title, date, endDate, reminderOffset, color, eventType } = req.body;
 
     if (!title?.trim() || !date || !color?.trim() || !eventType?.trim()) {
       return res.status(400).json({ message: 'Takvim etkinligi icin zorunlu alanlar eksik.' });
@@ -285,6 +285,8 @@ apiRouter.post('/calendar-events', async (req, res, next) => {
     await createCalendarEvent({
       title: title.trim(),
       date,
+      endDate: endDate || undefined,
+      reminderOffset: reminderOffset || undefined,
       color: color.trim(),
       eventType: eventType.trim(),
     }, session.user.id);

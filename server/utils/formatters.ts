@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+
 const dateFormatter = new Intl.DateTimeFormat('tr-TR', {
   day: 'numeric',
   month: 'long',
@@ -55,6 +57,6 @@ export const createEntityId = (prefix: string) => {
     String(now.getSeconds()).padStart(2, '0'),
   ].join('');
 
-  const randomSuffix = Math.floor(Math.random() * 900 + 100);
+  const randomSuffix = crypto.randomBytes(3).toString('hex');
   return `${prefix}-${parts}${randomSuffix}`;
 };

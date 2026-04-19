@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { ResultSetHeader, RowDataPacket } from 'mysql2';
 import { getPool } from '../db/pool.js';
 import { calculateDaysLeft, createEntityId, formatDisplayDate, formatRelativeTime } from '../utils/formatters.js';
@@ -100,7 +102,7 @@ type UserAuditLogRow = RowDataPacket & {
   actorName: string;
   targetUserId: string;
   targetName: string;
-  action: 'role_update' | 'department_update';
+  action: 'role_update' | 'department_update' | 'user_deletion';
   oldValue: string | null;
   newValue: string | null;
   createdAt: string;
@@ -1082,7 +1084,7 @@ export const updateTaskParent = async (taskId: string, projectId: string, parent
 };
 
 export const canUserUpdateTaskStatus = async (taskId: string, userId: string, role: string) => {
-  if (role === 'Admin') {
+  if (canViewAllData(role as any)) {
     return true;
   }
 
@@ -1233,7 +1235,7 @@ export const getUserAuditLogs = async (limit = 100) => {
     `SELECT
       l.id,
       l.actor_user_id AS actorUserId,
-      actor.name AS actorName,
+      COALESCE(actor.name, 'Silinmiş Kullanıcı') AS actorName,
       l.target_user_id AS targetUserId,
       COALESCE(target.name, l.old_value) AS targetName,
       l.action,
@@ -1241,7 +1243,7 @@ export const getUserAuditLogs = async (limit = 100) => {
       l.new_value AS newValue,
       l.created_at AS createdAt
      FROM user_audit_logs l
-     INNER JOIN users actor ON actor.id = l.actor_user_id
+     LEFT JOIN users actor ON actor.id = l.actor_user_id
      LEFT JOIN users target ON target.id = l.target_user_id
      ORDER BY l.created_at DESC
      LIMIT ?`,
@@ -1282,6 +1284,17 @@ export const deleteTask = async (taskId: string, actorUserId: string) => {
     }
 
     const taskTitle = taskRows[0].title as string;
+
+    // Orphaned dosyaları temizle
+    const [attachmentRows] = await connection.query<RowDataPacket[]>(
+      'SELECT file_path FROM task_attachments WHERE task_id = ? AND file_path IS NOT NULL',
+      [taskId],
+    );
+    for (const att of attachmentRows) {
+      const fullPath = path.join(process.cwd(), att.file_path as string);
+      fs.unlink(fullPath, () => undefined);
+    }
+
     await connection.query('DELETE FROM tasks WHERE id = ?', [taskId]);
     await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),

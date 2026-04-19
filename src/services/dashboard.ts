@@ -12,34 +12,7 @@ import {
 } from '../types';
 import { api } from './api';
 
-const normalizeMojibake = (value: string) =>
-  value
-    .replace(/GÃ¶/g, 'Gö')
-    .replace(/gÃ¶/g, 'gö')
-    .replace(/Ã¼/g, 'ü')
-    .replace(/Ã¶/g, 'ö')
-    .replace(/Ã§/g, 'ç')
-    .replace(/Ãş/g, 'ş')
-    .replace(/Ãı/g, 'ı')
-    .replace(/ÃĞ/g, 'Ğ')
-    .replace(/Ãğ/g, 'ğ')
-    .replace(/Ãœ/g, 'Ü')
-    .replace(/Ã–/g, 'Ö')
-    .replace(/Ã‡/g, 'Ç')
-    .replace(/ÃŞ/g, 'Ş')
-    .replace(/Ä±/g, 'ı')
-    .replace(/Ä°/g, 'İ');
-
-const normalizeBootstrap = (payload: AppBootstrap): AppBootstrap => ({
-  ...payload,
-  stats: payload.stats.map((stat) => ({
-    ...stat,
-    label: normalizeMojibake(stat.label),
-  })),
-});
-
-const withNormalizedBootstrap = async (request: Promise<AppBootstrap>) =>
-  normalizeBootstrap(await request);
+const withNormalizedBootstrap = async (request: Promise<AppBootstrap>) => request;
 
 export const getBootstrapData = () => withNormalizedBootstrap(api.get<AppBootstrap>('/bootstrap'));
 
