@@ -276,32 +276,20 @@ export const initializeDatabase = async () => {
       MODIFY COLUMN status ENUM('Aktif', 'Tamamlandı') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Aktif'
   `).catch(() => null);
 
-  const [rows] = await pool.query<(RowDataPacket & { total: number })[]>('SELECT COUNT(*) AS total FROM users');
-  if (!rows[0]?.total) {
-    for (const statement of baseSeedStatements) {
-      await pool.query(statement);
-    }
+  for (const statement of baseSeedStatements) {
+    await pool.query(statement);
   }
 
-  const [commentRows] = await pool.query<(RowDataPacket & { total: number })[]>('SELECT COUNT(*) AS total FROM task_comments');
-  if (!commentRows[0]?.total) {
-    for (const statement of commentSeedStatements) {
-      await pool.query(statement);
-    }
+  for (const statement of commentSeedStatements) {
+    await pool.query(statement);
   }
 
-  const [attachmentRows] = await pool.query<(RowDataPacket & { total: number })[]>('SELECT COUNT(*) AS total FROM task_attachments');
-  if (!attachmentRows[0]?.total) {
-    for (const statement of attachmentSeedStatements) {
-      await pool.query(statement);
-    }
+  for (const statement of attachmentSeedStatements) {
+    await pool.query(statement);
   }
 
-  const [auditLogRows] = await pool.query<(RowDataPacket & { total: number })[]>('SELECT COUNT(*) AS total FROM user_audit_logs');
-  if (!auditLogRows[0]?.total) {
-    for (const statement of auditLogSeedStatements) {
-      await pool.query(statement);
-    }
+  for (const statement of auditLogSeedStatements) {
+    await pool.query(statement);
   }
 
   await seedMissingPasswords('123456');

@@ -192,5 +192,5 @@ export const logoutUser = async (token: string) => {
 
 export const seedMissingPasswords = async (defaultPassword: string) => {
   const passwordHash = await hashPassword(defaultPassword);
-  await pool.query('UPDATE users SET password_hash = ? WHERE password_hash IS NULL OR password_hash = ""', [passwordHash]);
+  await pool.query('UPDATE users SET password_hash = ? WHERE (password_hash IS NULL OR password_hash = "") AND email = "ornek@zodiac.com"', [passwordHash]);
 };
