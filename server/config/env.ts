@@ -19,4 +19,5 @@ export const env = {
   mysqlPassword: process.env.MYSQL_PASSWORD || 'kendi_mySQL_sifrenizi_girin',
   mysqlDatabase: process.env.MYSQL_DATABASE || 'proje_yonetimi_app',
   authAdminEmail: process.env.AUTH_ADMIN_EMAIL || 'admin@zodiac.com',
+  openrouterApiKey: process.env.OPENROUTER_API_KEY || '',
 };

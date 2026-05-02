@@ -7,6 +7,8 @@ export interface User {
   status?: 'Online' | 'Offline' | 'Busy';
   lastActive?: string;
   department?: string;
+  workspaceId?: string;
+  workspaceName?: string;
 }
 
 export type AppRole =
@@ -206,6 +208,7 @@ export interface RegisterPayload {
   email: string;
   password: string;
   department?: string;
+  workspaceName: string;
 }
 
 export interface UpdateUserRolePayload {

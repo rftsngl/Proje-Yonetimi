@@ -17,6 +17,7 @@ import {
   Monitor,
   User,
   X,
+  Briefcase,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ConfirmModal from './ConfirmModal';
@@ -34,11 +35,12 @@ import {
   updateProfile,
   updateSettings,
   uploadProfilePhoto,
+  updateWorkspace,
 } from '../services/settings';
 import { resolveAvatarUrl } from '../lib/avatar';
 import { applyTheme } from '../lib/theme';
 
-type SettingsTab = 'profile' | 'account' | 'notifications' | 'appearance';
+type SettingsTab = 'profile' | 'account' | 'notifications' | 'appearance' | 'workspace';
 
 interface SettingsProps {
   currentUser: AppUser;
@@ -49,6 +51,7 @@ interface SettingsProps {
 const TABS = [
   { id: 'profile' as const, label: 'Profil', icon: User },
   { id: 'account' as const, label: 'Hesap', icon: Lock },
+  { id: 'workspace' as const, label: 'Çalışma Alanı', icon: Briefcase },
   { id: 'notifications' as const, label: 'Bildirimler', icon: Bell },
   { id: 'appearance' as const, label: 'Görünüm', icon: Palette },
 ];
@@ -87,6 +90,10 @@ export default function Settings({ currentUser, onDataRefresh, onDirtyChange }: 
   const [notifyProjectUpdates, setNotifyProjectUpdates] = useState(true);
   const [notifyDeadlineReminders, setNotifyDeadlineReminders] = useState(true);
   const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+
+  // Workspace state
+  const [workspaceName, setWorkspaceName] = useState(currentUser.workspaceName || '');
+  const [isSavingWorkspace, setIsSavingWorkspace] = useState(false);
 
   // Appearance state
   const [theme, setTheme] = useState<ThemeMode>('light');
@@ -141,11 +148,12 @@ export default function Settings({ currentUser, onDataRefresh, onDirtyChange }: 
       language !== bundle.settings.language ||
       currentPw !== '' ||
       newPw !== '' ||
-      confirmPw !== ''
+      confirmPw !== '' ||
+      workspaceName !== currentUser.workspaceName
     );
   }, [
     bundle, profileName, profileEmail, profileDepartment, notifyTaskAssigned,
-    notifyProjectUpdates, notifyDeadlineReminders, theme, language, currentPw, newPw, confirmPw
+    notifyProjectUpdates, notifyDeadlineReminders, theme, language, currentPw, newPw, confirmPw, workspaceName, currentUser.workspaceName
   ]);
 
   useEffect(() => {
@@ -167,6 +175,7 @@ export default function Settings({ currentUser, onDataRefresh, onDirtyChange }: 
     setCurrentPw('');
     setNewPw('');
     setConfirmPw('');
+    setWorkspaceName(currentUser.workspaceName || '');
     setFeedback(null);
   };
 
@@ -244,6 +253,20 @@ export default function Settings({ currentUser, onDataRefresh, onDirtyChange }: 
     }
   };
 
+  // Workspace save
+  const handleSaveWorkspace = async () => {
+    setIsSavingWorkspace(true);
+    try {
+      await updateWorkspace({ name: workspaceName });
+      showFeedback('success', 'Çalışma alanı adı başarıyla güncellendi.');
+      onDataRefresh?.();
+    } catch (error) {
+      showFeedback('error', error instanceof Error ? error.message : 'Çalışma alanı adı güncellenemedi.');
+    } finally {
+      setIsSavingWorkspace(false);
+    }
+  };
+
   // Appearance save
   const handleSaveAppearance = async () => {
     setIsSavingAppearance(true);
@@ -314,13 +337,15 @@ export default function Settings({ currentUser, onDataRefresh, onDirtyChange }: 
   const avatarUrl = bundle?.profile.avatarUrl || resolveAvatarUrl(currentUser.avatar);
 
   // Determine which save handler to use per tab
-  const isSaving = isSavingProfile || isSavingPassword || isSavingNotifications || isSavingAppearance;
+  const isSaving = isSavingProfile || isSavingPassword || isSavingNotifications || isSavingAppearance || isSavingWorkspace;
   const handleSave = () => {
     switch (activeSubTab) {
       case 'profile':
         return handleSaveProfile();
       case 'account':
         return handleSavePassword();
+      case 'workspace':
+        return handleSaveWorkspace();
       case 'notifications':
         return handleSaveNotifications();
       case 'appearance':
@@ -563,6 +588,39 @@ export default function Settings({ currentUser, onDataRefresh, onDirtyChange }: 
                       />
                       {newPw && confirmPw && newPw !== confirmPw && (
                         <p className="text-xs text-rose-500">Şifreler eşleşmiyor.</p>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {activeSubTab === 'workspace' && (
+                <motion.div 
+                  key="workspace" 
+                  initial={{ opacity: 0, x: 20 }} 
+                  animate={{ opacity: 1, x: 0 }} 
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-8"
+                >
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">Çalışma Alanı Ayarları</h3>
+                    <p className="mt-1 text-sm text-slate-500">Şirket/Çalışma alanı bilgilerinizi buradan yönetebilirsiniz.</p>
+                  </div>
+
+                  <div className="space-y-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700">Şirket / Çalışma Alanı Adı</label>
+                      <input
+                        type="text"
+                        value={workspaceName}
+                        onChange={(e) => setWorkspaceName(e.target.value)}
+                        disabled={currentUser.role !== 'Admin'}
+                        placeholder="Örn: Acme A.Ş."
+                        className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 outline-none transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                      {currentUser.role !== 'Admin' && (
+                        <p className="text-xs text-amber-500">Bu alanı yalnızca yöneticiler değiştirebilir.</p>
                       )}
                     </div>
                   </div>

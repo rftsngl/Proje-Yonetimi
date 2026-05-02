@@ -1,7 +1,8 @@
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { Project, Task, CalendarEvent, CreateCalendarEventPayload } from '../types';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
-import { Calendar as CalendarIcon, ChevronDown, ChevronLeft, ChevronRight, Plus, Trash2, X, Sparkles, Briefcase, CheckSquare } from 'lucide-react';
+import { Calendar as CalendarIcon, ChevronDown, ChevronLeft, ChevronRight, Filter, Plus, Trash2, X, Sparkles, Briefcase, CheckSquare, Check } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 interface CalendarProps {
@@ -68,7 +69,7 @@ const variants = {
     x: 0,
     opacity: 1,
     filter: 'blur(0px)',
-    transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] }
+    transition: { duration: 0.4, ease: [0.23, 1, 0.32, 1] as [number, number, number, number] }
   },
   exit: (direction: number) => ({
     x: direction < 0 ? 50 : -50,
@@ -96,10 +97,15 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
   
   const [reminderOffset, setReminderOffset] = useState(0);
   const [isReminderDropdownOpen, setIsReminderDropdownOpen] = useState(false);
+  const [calendarProjectFilter, setCalendarProjectFilter] = useState<string | null>(null);
+  const [isProjectFilterOpen, setIsProjectFilterOpen] = useState(false);
+  const [filterBtnRect, setFilterBtnRect] = useState<DOMRect | null>(null);
+  const filterBtnRef = useRef<HTMLButtonElement>(null);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const reminderDropdownRef = useRef<HTMLDivElement>(null);
   const datePickerRef = useRef<HTMLDivElement>(null);
+  const projectFilterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -112,6 +118,9 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
       if (datePickerRef.current && !datePickerRef.current.contains(event.target as Node)) {
         setIsStartDatePickerOpen(false);
         setIsEndDatePickerOpen(false);
+      }
+      if (projectFilterRef.current && !projectFilterRef.current.contains(event.target as Node)) {
+        setIsProjectFilterOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -243,11 +252,24 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
     return items;
   }, [events, projects, tasks]);
 
+  const filteredItems = useMemo(() => {
+    if (!calendarProjectFilter) return unifiedItems;
+    return unifiedItems.filter(item => {
+      if (item.type === 'event') return true; // User events always visible
+      if (item.type === 'project') return item.originalId === calendarProjectFilter;
+      if (item.type === 'task') {
+        const task = tasks.find(t => t.id === item.originalId);
+        return task?.projectId === calendarProjectFilter;
+      }
+      return true;
+    });
+  }, [unifiedItems, calendarProjectFilter, tasks]);
+
   const getDateString = (day: number, m: number, y: number) => formatDateParts(y, m, day);
 
   const getItemsForDay = (day: number, m: number, y: number) => {
     const dateStr = getDateString(day, m, y);
-    return unifiedItems.filter((item) => isDateInRange(dateStr, item.date, item.endDate));
+    return filteredItems.filter((item) => isDateInRange(dateStr, item.date, item.endDate));
   };
 
   const handleSubmit = async () => {
@@ -364,13 +386,35 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
             </div>
           </div>
           
-          <div className="hidden items-center gap-4 sm:flex">
-             {EVENT_OPTIONS.map(opt => (
-               <div key={opt.value} className="flex items-center gap-2">
-                 <div className={`h-2.5 w-2.5 rounded-full ${opt.color.split(' ')[0].replace('50', '500')}`} />
-                 <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">{opt.label}</span>
-               </div>
-             ))}
+          <div className="flex items-center gap-4">
+              <button
+                ref={filterBtnRef}
+                onClick={() => {
+                  if (filterBtnRef.current) {
+                    setFilterBtnRect(filterBtnRef.current.getBoundingClientRect());
+                  }
+                  setIsProjectFilterOpen(!isProjectFilterOpen);
+                }}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-all active:scale-95 ${
+                  calendarProjectFilter
+                    ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
+                    : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+                }`}
+              >
+                <Filter className="h-3.5 w-3.5" />
+                {calendarProjectFilter
+                  ? projects.find(p => p.id === calendarProjectFilter)?.name || 'Proje'
+                  : 'Tüm Projeler'}
+              </button>
+
+            <div className="hidden items-center gap-3 sm:flex">
+               {EVENT_OPTIONS.map(opt => (
+                 <div key={opt.value} className="flex items-center gap-1.5">
+                   <div className={`h-2 w-2 rounded-full ${opt.color.split(' ')[0].replace('50', '500')}`} />
+                   <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{opt.label}</span>
+                 </div>
+               ))}
+            </div>
           </div>
         </div>
 
@@ -399,11 +443,9 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
                 const cellDate = getDateString(dateObj.day, dateObj.month, dateObj.year);
 
                 return (
-                  <motion.div
+                  <div
                     key={`${cellDate}-${index}`}
-                    whileHover={{ scale: 1.01, zIndex: 10 }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                    className={`group relative min-h-[120px] border-b border-r border-slate-50 p-3 transition-colors ${
+                    className={`group relative min-h-[100px] border-b border-r border-slate-50 p-2.5 transition-colors ${
                       !dateObj.isCurrentMonth ? 'bg-slate-50/20 opacity-40' : 'hover:bg-indigo-50/20'
                     } ${today ? 'bg-indigo-50/40 ring-1 ring-inset ring-indigo-100' : ''}`}
                     onClick={() => { 
@@ -417,16 +459,16 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
                       } 
                     }}
                   >
-                    <div className="mb-3 flex items-center justify-between">
+                    <div className="mb-2 flex items-center justify-between">
                       <span
-                        className={`text-lg font-black leading-none ${
+                        className={`text-sm font-black leading-none ${
                           !dateObj.isCurrentMonth ? 'text-slate-300' : today ? 'text-indigo-600' : 'text-slate-800'
                         }`}
                       >
                         {dateObj.day}
                       </span>
                       {today && (
-                        <div className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-[8px] font-bold text-white uppercase tracking-tighter shadow-lg shadow-indigo-200">
+                        <div className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-[7px] font-bold text-white uppercase tracking-tighter shadow-sm">
                           Bugün
                         </div>
                       )}
@@ -479,7 +521,7 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
                         </div>
                       )}
                     </div>
-                  </motion.div>
+                  </div>
                 );
               })}
             </motion.div>
@@ -770,6 +812,57 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
         {...confirmModal}
         onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
       />
+      {isProjectFilterOpen && filterBtnRect && createPortal(
+        <>
+          <div 
+            className="fixed inset-0" 
+            style={{ zIndex: 99998 }}
+            onClick={() => setIsProjectFilterOpen(false)}
+          />
+          <div
+            ref={projectFilterRef}
+            style={{
+              position: 'fixed',
+              top: `${filterBtnRect.bottom + 8}px`,
+              left: `${Math.max(16, filterBtnRect.right - 224)}px`,
+              zIndex: 99999,
+            }}
+            className="w-56 rounded-2xl border border-slate-100 bg-white p-2 shadow-2xl"
+          >
+            <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Projeye Göre Filtrele</p>
+            <button
+              onClick={() => { setCalendarProjectFilter(null); setIsProjectFilterOpen(false); }}
+              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+                !calendarProjectFilter ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              Tüm Projeler
+              {!calendarProjectFilter && <Check className="h-4 w-4" />}
+            </button>
+            <div className="my-1 h-px bg-slate-50" />
+            {projects.map(p => (
+              <button
+                key={p.id}
+                onClick={() => { setCalendarProjectFilter(p.id); setIsProjectFilterOpen(false); }}
+                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm font-medium transition-all ${
+                  calendarProjectFilter === p.id ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <div className={`flex h-6 w-6 items-center justify-center rounded-lg text-[10px] font-bold ${
+                    calendarProjectFilter === p.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="truncate">{p.name}</span>
+                </div>
+                {calendarProjectFilter === p.id && <Check className="h-4 w-4 shrink-0" />}
+              </button>
+            ))}
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   );
 }

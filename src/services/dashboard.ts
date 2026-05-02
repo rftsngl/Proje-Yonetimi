@@ -91,6 +91,9 @@ export const updateUserDepartment = (userId: string, payload: UpdateUserDepartme
 export const deleteTeamMember = (userId: string) =>
   withNormalizedBootstrap(api.delete<AppBootstrap>(`/users/${userId}`));
 
+export const updateMemberInfo = (userId: string, payload: { name?: string; email?: string }) =>
+  withNormalizedBootstrap(api.patch<AppBootstrap>(`/users/${userId}/info`, payload));
+
 export const getAdminAuditLogs = (limit = 100) =>
   api.get<UserAuditLogsResponse>(`/admin/audit-logs?limit=${limit}`);
 

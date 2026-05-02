@@ -26,6 +26,8 @@ type AuthUserRow = RowDataPacket & {
   lastActive: string | null;
   department: string | null;
   passwordHash: string | null;
+  workspaceId: string;
+  workspaceName: string;
 };
 
 const pool = getPool();
@@ -39,22 +41,27 @@ const toPublicUser = (row: AuthUserRow) => ({
   status: row.status,
   lastActive: row.lastActive || '',
   department: row.department || 'Genel',
+  workspaceId: row.workspaceId,
+  workspaceName: row.workspaceName,
 });
 
 const getUserByEmail = async (email: string) => {
   const [rows] = await pool.query<AuthUserRow[]>(
     `SELECT
-      id,
-      name,
-      avatar,
-      role,
-      email,
-      status,
-      last_active AS lastActive,
-      department,
-      password_hash AS passwordHash
-     FROM users
-     WHERE email = ?
+      u.id,
+      u.name,
+      u.avatar,
+      u.role,
+      u.email,
+      u.status,
+      u.last_active AS lastActive,
+      u.department,
+      u.password_hash AS passwordHash,
+      u.workspace_id AS workspaceId,
+      w.name AS workspaceName
+     FROM users u
+     LEFT JOIN workspaces w ON w.id = u.workspace_id
+     WHERE u.email = ?
      LIMIT 1`,
     [email],
   );
@@ -65,17 +72,20 @@ const getUserByEmail = async (email: string) => {
 const getUserById = async (userId: string) => {
   const [rows] = await pool.query<AuthUserRow[]>(
     `SELECT
-      id,
-      name,
-      avatar,
-      role,
-      email,
-      status,
-      last_active AS lastActive,
-      department,
-      password_hash AS passwordHash
-     FROM users
-     WHERE id = ?
+      u.id,
+      u.name,
+      u.avatar,
+      u.role,
+      u.email,
+      u.status,
+      u.last_active AS lastActive,
+      u.department,
+      u.password_hash AS passwordHash,
+      u.workspace_id AS workspaceId,
+      w.name AS workspaceName
+     FROM users u
+     LEFT JOIN workspaces w ON w.id = u.workspace_id
+     WHERE u.id = ?
      LIMIT 1`,
     [userId],
   );
@@ -98,8 +108,8 @@ export const registerUser = async (payload: {
   email: string;
   password: string;
   department?: string;
+  workspaceName: string;
 }) => {
-  const { authAdminEmail } = await import('../config/env.js').then((m) => m.env);
   
   const existingUser = await getUserByEmail(payload.email);
   if (existingUser) {
@@ -111,15 +121,38 @@ export const registerUser = async (payload: {
     throw new Error('Geçersiz departman seçimi.');
   }
 
+  // Workspace ismi daha önce alınmış mı kontrol et
+  const [existingWs] = await pool.query<RowDataPacket[]>(
+    'SELECT id FROM workspaces WHERE LOWER(name) = LOWER(?) LIMIT 1',
+    [payload.workspaceName.trim()],
+  );
+
   const passwordHash = await hashPassword(payload.password);
   const userId = createEntityId('USR');
   const avatarSeed = `user-${userId.toLowerCase()}`;
-  const userRole = payload.email.toLowerCase() === authAdminEmail.toLowerCase() ? 'Admin' : 'Frontend Developer';
+
+  let workspaceId: string;
+  let userRole: string;
+
+  if (existingWs.length > 0) {
+    // Mevcut workspace'e katıl — normal üye olarak
+    workspaceId = existingWs[0].id as string;
+    userRole = 'Frontend Developer';
+  } else {
+    // Yeni workspace oluştur — kurucu olarak Admin ol
+    workspaceId = createEntityId('WS');
+    userRole = 'Admin';
+
+    await pool.query(
+      'INSERT INTO workspaces (id, name) VALUES (?, ?)',
+      [workspaceId, payload.workspaceName.trim()],
+    );
+  }
 
   await pool.query(
-    `INSERT INTO users (id, name, avatar, role, email, status, last_active, department, password_hash)
-     VALUES (?, ?, ?, ?, ?, 'Online', 'Simdi', ?, ?)`,
-    [userId, payload.name, avatarSeed, userRole, payload.email, department, passwordHash],
+    `INSERT INTO users (id, name, avatar, role, email, status, last_active, department, password_hash, workspace_id)
+     VALUES (?, ?, ?, ?, ?, 'Online', 'Simdi', ?, ?, ?)`,
+    [userId, payload.name, avatarSeed, userRole, payload.email, department, passwordHash, workspaceId],
   );
 
   const token = await createSession(userId);
@@ -136,6 +169,27 @@ export const registerUser = async (payload: {
   };
 };
 
+
+/**
+ * Workspace'te hiç Admin yoksa, verilen kullanıcıyı geçici Admin olarak atar.
+ * Her login ve session restore işleminde çağrılır.
+ * Geri dönüş: kullanıcı Admin'e terfi ettiyse true, aksi halde false.
+ */
+const promoteToTempAdminIfNeeded = async (userId: string, workspaceId: string): Promise<boolean> => {
+  const [adminRows] = await pool.query<RowDataPacket[]>(
+    "SELECT id FROM users WHERE role = 'Admin' AND workspace_id = ? LIMIT 1",
+    [workspaceId],
+  );
+
+  if (adminRows.length === 0) {
+    // Workspace'te hiç admin yok — bu kullanıcıyı geçici admin yap
+    await pool.query('UPDATE users SET role = ? WHERE id = ?', ['Admin', userId]);
+    return true;
+  }
+
+  return false;
+};
+
 export const loginUser = async (payload: { email: string; password: string }) => {
   const user = await getUserByEmail(payload.email);
   if (!user?.passwordHash) {
@@ -147,11 +201,21 @@ export const loginUser = async (payload: { email: string; password: string }) =>
     throw new Error('E-posta veya sifre hatali.');
   }
 
+  // Workspace'te admin yoksa bu kullanıcıyı geçici admin yap
+  const promoted = await promoteToTempAdminIfNeeded(user.id, user.workspaceId);
+
   const token = await createSession(user.id);
+
+  // Terfi olduysa güncel kullanıcı verisini yeniden çek
+  const finalUser = promoted ? await getUserById(user.id) : user;
+  if (!finalUser) {
+    throw new Error('Kullanıcı verisi okunamadı.');
+  }
+
   return {
     token,
-    user: toPublicUser(user),
-    permissions: getPermissionsForRole(user.role),
+    user: toPublicUser(finalUser),
+    permissions: getPermissionsForRole(finalUser.role),
   };
 };
 
@@ -167,9 +231,12 @@ export const getUserFromToken = async (token: string) => {
       u.status,
       u.last_active AS lastActive,
       u.department,
-      u.password_hash AS passwordHash
+      u.password_hash AS passwordHash,
+      u.workspace_id AS workspaceId,
+      w.name AS workspaceName
      FROM auth_sessions s
      INNER JOIN users u ON u.id = s.user_id
+     LEFT JOIN workspaces w ON w.id = u.workspace_id
      WHERE s.token_hash = ?
        AND s.expires_at > NOW()
      LIMIT 1`,
@@ -180,9 +247,17 @@ export const getUserFromToken = async (token: string) => {
     return null;
   }
 
+  // Session restore sırasında da workspace admin kontrolü yap
+  const promoted = await promoteToTempAdminIfNeeded(rows[0].id, rows[0].workspaceId);
+  const finalUser = promoted ? await getUserById(rows[0].id) : rows[0];
+
+  if (!finalUser) {
+    return null;
+  }
+
   return {
-    user: toPublicUser(rows[0]),
-    permissions: getPermissionsForRole(rows[0].role),
+    user: toPublicUser(finalUser),
+    permissions: getPermissionsForRole(finalUser.role),
   };
 };
 
@@ -193,4 +268,26 @@ export const logoutUser = async (token: string) => {
 export const seedMissingPasswords = async (defaultPassword: string) => {
   const passwordHash = await hashPassword(defaultPassword);
   await pool.query('UPDATE users SET password_hash = ? WHERE (password_hash IS NULL OR password_hash = "") AND email = "ornek@zodiac.com"', [passwordHash]);
+};
+
+export const resetPassword = async (payload: { email: string; newPassword: string }) => {
+  const { email, newPassword } = payload;
+
+  if (!email || !newPassword) {
+    throw new Error('E-posta ve yeni şifre zorunludur.');
+  }
+
+  if (newPassword.length < 6) {
+    throw new Error('Yeni şifre en az 6 karakter olmalıdır.');
+  }
+
+  const user = await getUserByEmail(email);
+  if (!user) {
+    throw new Error('Bu e-posta adresine kayıtlı bir kullanıcı bulunamadı.');
+  }
+
+  const newHash = await hashPassword(newPassword);
+  await pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, user.id]);
+
+  return { ok: true, message: 'Şifreniz başarıyla güncellendi.' };
 };

@@ -1,5 +1,6 @@
-import { ChevronDown, ChevronRight, Download, Edit2, Filter, MoreVertical, Plus, Search, Trash2, Check, X } from 'lucide-react';
+import { ChevronDown, ChevronRight, Download, Edit2, Filter, MoreVertical, Plus, Search, Trash2, Check, X, ArrowRight, Copy, ExternalLink } from 'lucide-react';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Task } from '../types';
 import { resolveAvatarUrl } from '../lib/avatar';
@@ -12,6 +13,7 @@ interface TaskListProps {
   onTaskClick?: (task: Task) => void;
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (task: Task) => void;
+  onMoveTask?: (taskId: string, status: Task['status']) => void | Promise<void>;
   canManageTasks?: boolean;
 }
 
@@ -31,6 +33,7 @@ export default function TaskList({
   onTaskClick,
   onEditTask,
   onDeleteTask,
+  onMoveTask,
   canManageTasks,
 }: TaskListProps) {
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<string[]>([]);
@@ -39,7 +42,10 @@ export default function TaskList({
   const [isExporting, setIsExporting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [openTaskId, setOpenTaskId] = useState<string | null>(null);
+  const [menuPosition, setMenuPosition] = useState({ x: 0, y: 0 });
   const filterRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Close filter menu when clicking outside
   useEffect(() => {
@@ -292,13 +298,18 @@ export default function TaskList({
                       delay: Math.min(index * 0.02, 0.3) 
                     }}
                     key={task.id}
-                    onClick={() => onTaskClick?.(task)}
-                    className="group cursor-pointer transition-colors hover:bg-slate-50/80"
+                    className="group transition-colors hover:bg-slate-50/80"
                   >
-                    <td className="whitespace-nowrap px-6 py-4">
+                    <td 
+                      className="whitespace-nowrap px-6 py-4 cursor-pointer"
+                      onClick={() => onTaskClick?.(task)}
+                    >
                       <span className="rounded-md bg-indigo-50 px-2 py-1 text-xs font-bold text-indigo-600">{task.id}</span>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4">
+                    <td 
+                      className="whitespace-nowrap px-6 py-4 cursor-pointer"
+                      onClick={() => onTaskClick?.(task)}
+                    >
                       <div 
                         className="flex items-center gap-2 pl-[var(--indent)]" 
                         style={{ '--indent': `${level * 14}px` } as React.CSSProperties}
@@ -326,10 +337,16 @@ export default function TaskList({
                         <div className="text-sm font-semibold text-slate-900">{task.title}</div>
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4">
+                    <td 
+                      className="whitespace-nowrap px-6 py-4 cursor-pointer"
+                      onClick={() => onTaskClick?.(task)}
+                    >
                       <div className="text-sm text-slate-500">{task.project}</div>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4">
+                    <td 
+                      className="whitespace-nowrap px-6 py-4 cursor-pointer"
+                      onClick={() => onTaskClick?.(task)}
+                    >
                       <div className="flex items-center gap-2">
                         <img
                           src={resolveAvatarUrl(task.assignees[0] || task.id, 32)}
@@ -340,17 +357,23 @@ export default function TaskList({
                         <span className="text-sm text-slate-700">{task.assigneeNames[0] || 'Atanmadı'}</span>
                       </div>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4">
+                    <td 
+                      className="whitespace-nowrap px-6 py-4 cursor-pointer"
+                      onClick={() => onTaskClick?.(task)}
+                    >
                       <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusStyles[task.status]}`}>
                         {task.status}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4">
+                    <td 
+                      className="whitespace-nowrap px-6 py-4 cursor-pointer"
+                      onClick={() => onTaskClick?.(task)}
+                    >
                       <div className="text-sm font-medium text-slate-600">{task.date || '-'}</div>
                     </td>
-                    <td className="whitespace-nowrap px-6 py-4 text-right">
+                    <td className="whitespace-nowrap px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                       {canManageTasks ? (
-                        <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                        <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={(event) => {
                               event.stopPropagation();
@@ -379,12 +402,20 @@ export default function TaskList({
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
-                          <button
-                            onClick={(event) => event.stopPropagation()}
-                            className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-slate-100 hover:text-slate-600"
-                          >
-                            <MoreVertical className="h-4 w-4" />
-                          </button>
+                          <div className="relative">
+                            <button
+                               onClick={(event) => {
+                                 event.stopPropagation();
+                                 const rect = event.currentTarget.getBoundingClientRect();
+                                 setMenuPosition({ x: rect.right, y: rect.bottom });
+                                 setOpenTaskId(openTaskId === task.id ? null : task.id);
+                               }}
+                               onMouseDown={(e) => e.stopPropagation()}
+                               className={`rounded-xl p-2 transition-all ${openTaskId === task.id ? 'bg-indigo-50 text-indigo-600 ring-1 ring-indigo-200' : 'text-slate-400 hover:bg-slate-100 hover:text-slate-600'}`}
+                             >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </div>
                         </div>
                       ) : (
                         <div className="group-hover:hidden">
@@ -425,6 +456,88 @@ export default function TaskList({
           </tbody>
         </table>
       </div>
+
+      {openTaskId && createPortal(
+        <>
+          <div 
+            className="fixed inset-0" 
+            style={{ zIndex: 99998 }}
+            onClick={() => setOpenTaskId(null)}
+          />
+          <div
+            ref={menuRef}
+            style={{
+              position: 'fixed',
+              top: menuPosition.y + 300 > window.innerHeight 
+                ? `${menuPosition.y - 320}px` 
+                : `${menuPosition.y + 8}px`,
+              left: `${Math.max(16, Math.min(window.innerWidth - 240, menuPosition.x - 224))}px`, 
+              zIndex: 99999,
+            }}
+            className="w-56 rounded-2xl border border-slate-100 bg-white p-2 shadow-2xl text-left animate-in fade-in zoom-in-95 duration-150"
+          >
+            {(() => {
+              const task = tasks.find(t => t.id === openTaskId);
+              if (!task) return null;
+              return (
+                <>
+                  <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-50 mb-1">Görev Seçenekleri</p>
+                  <button
+                    onClick={() => { onEditTask?.(task); setOpenTaskId(null); }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition-all hover:bg-indigo-50 hover:text-indigo-600"
+                  >
+                    <Edit2 className="h-4 w-4" />
+                    Düzenle
+                  </button>
+                  <button
+                    onClick={() => { onAddSubtask?.(task); setOpenTaskId(null); }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-slate-700 transition-all hover:bg-emerald-50 hover:text-emerald-600"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Alt Görev Ekle
+                  </button>
+                  <div className="my-1.5 h-px bg-slate-50" />
+                  <p className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Durumu Değiştir</p>
+                  {allStatuses.filter(s => s !== task.status).map(status => (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        onMoveTask?.(task.id, status as Task['status']);
+                        setOpenTaskId(null);
+                      }}
+                      className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm font-medium text-slate-600 transition-all hover:bg-slate-50 hover:text-indigo-600"
+                    >
+                      <div className="flex items-center gap-2">
+                        <ArrowRight className="h-3.5 w-3.5 opacity-50" />
+                        {status}
+                      </div>
+                    </button>
+                  ))}
+                  <div className="my-1.5 h-px bg-slate-50" />
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(task.id);
+                      setOpenTaskId(null);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium text-slate-700 transition-all hover:bg-slate-50"
+                  >
+                    <Copy className="h-4 w-4" />
+                    ID Kopyala
+                  </button>
+                  <button
+                    onClick={() => { onDeleteTask?.(task); setOpenTaskId(null); }}
+                    className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-rose-600 transition-all hover:bg-rose-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Görevi Sil
+                  </button>
+                </>
+              );
+            })()}
+          </div>
+        </>,
+        document.body
+      )}
     </div>
   );
 }

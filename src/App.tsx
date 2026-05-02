@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { LayoutGrid, List, Plus } from 'lucide-react';
+import { LayoutGrid, List, Plus, Filter, Briefcase, ChevronDown, Check } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -45,12 +45,15 @@ import {
   updateUserDepartment,
   updateUserRole,
   deleteTeamMember,
+  updateMemberInfo,
   deleteNotification,
   deleteAllNotifications,
   setNotificationReadState,
   getNotificationsPage,
 } from './services/dashboard';
 import { clearStoredAuthToken, getStoredAuthToken } from './services/session';
+import { getGlobalReport, getProjectReport } from './services/ai';
+import ReportModal from './components/ReportModal';
 import {
   AppBootstrap,
   AppRole,
@@ -125,6 +128,29 @@ export default function App() {
     const bootstrap = await getBootstrapData();
     setData(bootstrap);
     return bootstrap;
+  };
+
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [reportContent, setReportContent] = useState<string | null>(null);
+  const [isReportLoading, setIsReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportTitle, setReportTitle] = useState('Yapay Zeka Analizi');
+
+  const handleGenerateReport = async (projectId?: string) => {
+    setIsReportModalOpen(true);
+    setIsReportLoading(true);
+    setReportError(null);
+    setReportContent(null);
+    setReportTitle(projectId ? 'Proje Detay Raporu' : 'Genel Proje Raporu');
+
+    try {
+      const report = projectId ? await getProjectReport(projectId) : await getGlobalReport();
+      setReportContent(report);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : 'Rapor alınırken bilinmeyen bir hata oluştu.');
+    } finally {
+      setIsReportLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -798,6 +824,24 @@ export default function App() {
     }
   };
 
+  const handleUpdateMemberInfo = async (userId: string, payload: { name?: string; email?: string }) => {
+    try {
+      const updatedData = await updateMemberInfo(userId, payload);
+      setData(updatedData);
+    } catch (error) {
+      setConfirmModal({
+        isOpen: true,
+        title: 'Hata',
+        message: error instanceof Error ? error.message : 'Kullanıcı bilgileri güncellenemedi.',
+        confirmLabel: 'Tamam',
+        showCancel: false,
+        variant: 'danger',
+        onConfirm: () => setConfirmModal((prev) => ({ ...prev, isOpen: false })),
+      });
+      throw error;
+    }
+  };
+
   useEffect(() => {
     if (!isAuthenticated || activeTab !== 'team' || !data.permissions.canManageTeam) {
       return;
@@ -851,116 +895,193 @@ export default function App() {
   }
 
   const renderTasksContent = () => (
-    <div className="space-y-6">
-      {taskProjectFilter && (
-        <div className="flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-bold text-indigo-700">{taskProjectFilter.name} görevleri gösteriliyor</p>
-            <p className="text-xs text-indigo-600">Filtreyi temizlersen tüm görev listesine geri dönersin.</p>
+    <div className="flex gap-6">
+      {/* Sol Panel - Proje Kapsam Seçici */}
+      <div className="w-72 flex-shrink-0">
+        <div className="sticky top-24 rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-5 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
+                <Briefcase className="h-5 w-5 text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wider text-slate-400">Proje Kapsamı</p>
+                <p className="text-xs text-slate-500">{data.projects.length} proje mevcut</p>
+              </div>
+            </div>
           </div>
-          <button
-            onClick={() => setTaskProjectFilter(null)}
-            className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-indigo-600 transition-colors hover:bg-indigo-100"
-          >
-            Filtreyi Temizle
-          </button>
-        </div>
-      )}
+          <div className="max-h-[calc(100vh-14rem)] overflow-y-auto p-3">
+            <button
+              onClick={() => setTaskProjectFilter(null)}
+              className={`mb-1.5 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
+                !taskProjectFilter
+                  ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-100'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <div className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold ${
+                !taskProjectFilter ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'
+              }`}>
+                ✦
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold">Tüm Projeler</p>
+                <p className="text-xs text-slate-400">{data.tasks.length} görev</p>
+              </div>
+              {!taskProjectFilter && <Check className="h-5 w-5 flex-shrink-0 text-indigo-500" />}
+            </button>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Görevler</h1>
-          <p className="mt-1 text-slate-500">Rolüne göre erişebildiğin görevleri ve süreçleri buradan takip edebilirsin.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex items-center rounded-xl border border-slate-200 bg-slate-100 p-1 shadow-sm">
-            <button
-              onClick={() => setTaskView('kanban')}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${
-                taskView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <LayoutGrid className="h-4 w-4" />
-              Kanban
-            </button>
-            <button
-              onClick={() => setTaskView('list')}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${
-                taskView === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              <List className="h-4 w-4" />
-              Liste
-            </button>
+            <div className="my-2.5 h-px bg-slate-100" />
+
+            {data.projects.map((p) => {
+              const projectTaskCount = data.tasks.filter(t => t.projectId === p.id).length;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setTaskProjectFilter(p)}
+                  className={`mb-1.5 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm transition-all ${
+                    taskProjectFilter?.id === p.id
+                      ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-100'
+                      : 'text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-bold ${
+                    taskProjectFilter?.id === p.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{p.name}</p>
+                    <p className="text-xs text-slate-400">{projectTaskCount} görev</p>
+                  </div>
+                  {taskProjectFilter?.id === p.id && <Check className="h-5 w-5 flex-shrink-0 text-indigo-500" />}
+                </button>
+              );
+            })}
           </div>
-          {canManageTasks && (
-            <button
-              onClick={() => {
-                setPresetParentTask(null);
-                setIsTaskModalOpen(true);
-              }}
-              className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 font-bold text-white shadow-lg shadow-indigo-100 transition-all active:scale-95 hover:bg-indigo-700"
-            >
-              <Plus className="h-5 w-5" />
-              <span className="hidden sm:inline">Yeni Görev</span>
-            </button>
-          )}
         </div>
       </div>
 
-      <AnimatePresence mode="wait">
-        {taskView === 'kanban' ? (
+      {/* Sağ Panel - Görev İçeriği */}
+      <div className="min-w-0 flex-1 space-y-6">
+        {taskProjectFilter && (
           <motion.div
-            key="kanban-view"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
           >
-            <KanbanBoard
-              tasks={filteredTasks}
-              showHeader={false}
-              onAddTask={canManageTasks ? () => setIsTaskModalOpen(true) : undefined}
-              onTaskClick={handleTaskClick}
-              onMoveTask={handleMoveTaskStatus}
-              currentUser={data.currentUser}
-            />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="list-view"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <TaskList
-              tasks={listTasks}
-              onAddTask={
-                canManageTasks
-                  ? () => {
-                      setPresetParentTask(null);
-                      setIsTaskModalOpen(true);
-                    }
-                  : undefined
-              }
-              onAddSubtask={
-                canManageTasks
-                  ? (task) => {
-                      setPresetParentTask(task);
-                      setEditingTask(null);
-                      setIsTaskModalOpen(true);
-                    }
-                  : undefined
-              }
-              onTaskClick={handleTaskClick}
-              onEditTask={canManageTasks ? handleEditTask : undefined}
-              onDeleteTask={canManageTasks ? handleDeleteTask : undefined}
-              canManageTasks={canManageTasks}
-            />
+            <div>
+              <p className="text-sm font-bold text-indigo-700">{taskProjectFilter.name} görevleri gösteriliyor</p>
+              <p className="text-xs text-indigo-600">Filtreyi temizlersen tüm görev listesine geri dönersin.</p>
+            </div>
+            <button
+              onClick={() => setTaskProjectFilter(null)}
+              className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-indigo-600 transition-colors hover:bg-indigo-100"
+            >
+              Filtreyi Temizle
+            </button>
           </motion.div>
         )}
-      </AnimatePresence>
+
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Görevler</h1>
+            <p className="mt-1 text-slate-500">Rolüne göre erişebildiğin görevleri ve süreçleri buradan takip edebilirsin.</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center rounded-xl border border-slate-200 bg-slate-100 p-1 shadow-sm">
+                <button
+                  onClick={() => setTaskView('kanban')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${
+                    taskView === 'kanban' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  Kanban
+                </button>
+                <button
+                  onClick={() => setTaskView('list')}
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition-all ${
+                    taskView === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <List className="h-4 w-4" />
+                  Liste
+                </button>
+              </div>
+              {canManageTasks && (
+                <button
+                  onClick={() => {
+                    setPresetParentTask(null);
+                    setIsTaskModalOpen(true);
+                  }}
+                  className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 font-bold text-white shadow-lg shadow-indigo-100 transition-all active:scale-95 hover:bg-indigo-700"
+                >
+                  <Plus className="h-5 w-5" />
+                  <span className="hidden sm:inline">Yeni Görev</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <AnimatePresence mode="wait">
+          {taskView === 'kanban' ? (
+            <motion.div
+              key="kanban-view"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <KanbanBoard
+                tasks={filteredTasks}
+                showHeader={false}
+                onAddTask={canManageTasks ? () => setIsTaskModalOpen(true) : undefined}
+                onTaskClick={handleTaskClick}
+                onMoveTask={handleMoveTaskStatus}
+                onDeleteTask={canManageTasks ? handleDeleteTask : undefined}
+                currentUser={data.currentUser}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="list-view"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 20 }}
+              transition={{ duration: 0.3 }}
+            >
+              <TaskList
+                tasks={listTasks}
+                onAddTask={
+                  canManageTasks
+                    ? () => {
+                        setPresetParentTask(null);
+                        setIsTaskModalOpen(true);
+                      }
+                    : undefined
+                }
+                onAddSubtask={
+                  canManageTasks
+                    ? (task) => {
+                        setPresetParentTask(task);
+                        setEditingTask(null);
+                        setIsTaskModalOpen(true);
+                      }
+                    : undefined
+                }
+                onTaskClick={handleTaskClick}
+                onEditTask={canManageTasks ? handleEditTask : undefined}
+                onDeleteTask={canManageTasks ? handleDeleteTask : undefined}
+                onMoveTask={handleMoveTaskStatus}
+                canManageTasks={canManageTasks}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 
@@ -1005,6 +1126,12 @@ export default function App() {
             projectProgress={data.projectProgress}
             currentUser={data.currentUser}
             onNavigateFromStat={handleDashboardStatNavigation}
+            onRefresh={refreshData}
+            onGenerateReport={() => handleGenerateReport()}
+            onTaskClick={(taskId) => {
+              const task = data.tasks.find(t => t.id === taskId);
+              if (task) handleTaskClick(task);
+            }}
           />
         );
       case 'projects':
@@ -1017,6 +1144,7 @@ export default function App() {
             onEditProject={canManageProjects ? handleEditProject : undefined}
             onDeleteProject={canManageProjects ? handleDeleteProject : undefined}
             canManageProjects={canManageProjects}
+            onGenerateReport={(projectId) => handleGenerateReport(projectId)}
           />
         );
       case 'calendar':
@@ -1045,6 +1173,7 @@ export default function App() {
             auditLogs={auditLogs}
             isAuditLogsLoading={isAuditLogsLoading}
             onDeleteMember={handleDeleteTeamMember}
+            onUpdateMemberInfo={handleUpdateMemberInfo}
           />
         );
       case 'notifications':
@@ -1148,6 +1277,7 @@ export default function App() {
         onViewAllTasks={handleViewProjectTasks}
         onOpenWbs={handleOpenProjectWbs}
         onAddMember={canManageTeam ? handleAddProjectMember : undefined}
+        onGenerateReport={(projectId) => handleGenerateReport(projectId)}
       />
 
       <WBSDiagram
@@ -1190,6 +1320,15 @@ export default function App() {
       <ConfirmModal
         {...confirmModal}
         onCancel={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
+
+      <ReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+        reportContent={reportContent}
+        isLoading={isReportLoading}
+        error={reportError}
+        title={reportTitle}
       />
     </Layout>
   );

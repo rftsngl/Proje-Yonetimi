@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { MoreHorizontal, Plus, Clock, MessageSquare, Paperclip } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { MoreHorizontal, Plus, Clock, MessageSquare, Paperclip, Edit2, Trash2, Check, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Task } from '../types';
 import { User } from '../types';
@@ -11,12 +11,25 @@ interface KanbanBoardProps {
   onAddTask?: () => void;
   onTaskClick?: (task: Task) => void;
   onMoveTask?: (taskId: string, status: Task['status']) => void | Promise<void>;
+  onDeleteTask?: (task: Task) => void;
   currentUser?: User;
 }
 
-export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTaskClick, onMoveTask, currentUser }: KanbanBoardProps) {
+export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTaskClick, onMoveTask, onDeleteTask, currentUser }: KanbanBoardProps) {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [hoveredColumnId, setHoveredColumnId] = useState<Task['status'] | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setOpenMenuId(null);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const columns = [
     { id: 'Yapılacak', title: 'Yapılacaklar' },
@@ -91,9 +104,48 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
                     {columnTasks.length}
                   </span>
                 </div>
-                <button className="p-1 text-slate-400 transition-colors hover:text-slate-600">
-                  <MoreHorizontal className="h-5 w-5" />
-                </button>
+                <div className="relative">
+                  <button 
+                    onClick={() => setOpenMenuId(openMenuId === `col-${column.id}` ? null : `col-${column.id}`)}
+                    className={`p-1 transition-colors hover:text-slate-600 ${openMenuId === `col-${column.id}` ? 'text-indigo-600' : 'text-slate-400'}`}
+                  >
+                    <MoreHorizontal className="h-5 w-5" />
+                  </button>
+
+                  <AnimatePresence>
+                    {openMenuId === `col-${column.id}` && (
+                      <motion.div
+                        ref={menuRef}
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        className="absolute right-0 z-50 mt-2 w-48 rounded-xl border border-slate-100 bg-white p-1 shadow-xl"
+                      >
+                        <button
+                          onClick={() => {
+                            onAddTask?.();
+                            setOpenMenuId(null);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Görev Ekle
+                        </button>
+                        <button
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50"
+                          onClick={() => {
+                            // Logic to clear column could be implemented here if needed
+                            setOpenMenuId(null);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          Sütunu Temizle
+                        </button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
 
               <div className="space-y-4">
@@ -134,9 +186,79 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
                       >
                         {task.priority}
                       </span>
-                      <button className="text-slate-300 transition-colors group-hover:text-slate-500">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
+                      <div className="relative">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId(openMenuId === `task-${task.id}` ? null : `task-${task.id}`);
+                          }}
+                          className={`rounded-lg p-1 transition-colors ${openMenuId === `task-${task.id}` ? 'bg-slate-100 text-indigo-600' : 'text-slate-300 hover:text-slate-500'}`}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+
+                        <AnimatePresence>
+                          {openMenuId === `task-${task.id}` && (
+                            <motion.div
+                              ref={menuRef}
+                              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                              animate={{ opacity: 1, y: 0, scale: 1 }}
+                              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              className="absolute right-0 z-50 mt-2 w-52 rounded-xl border border-slate-100 bg-white p-1 shadow-xl"
+                            >
+                              <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-50 mb-1">Görev İşlemleri</p>
+                              
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // Open details/edit
+                                  onTaskClick?.(task);
+                                  setOpenMenuId(null);
+                                }}
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                              >
+                                <Edit2 className="h-4 w-4 text-indigo-500" />
+                                Düzenle
+                              </button>
+
+                              <div className="my-1 border-t border-slate-50" />
+                              <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Durumu Değiştir</p>
+                              
+                              {columns.filter(c => c.id !== task.status).map(c => (
+                                <button
+                                  key={c.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onMoveTask?.(task.id, c.id);
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <ArrowRight className="h-3 w-3" />
+                                    {c.title}
+                                  </div>
+                                </button>
+                              ))}
+
+                              <div className="my-1 border-t border-slate-50" />
+                              
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteTask?.(task);
+                                  setOpenMenuId(null);
+                                }}
+                                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Sil
+                              </button>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     </div>
 
                     <h4 className="mb-1 font-bold text-slate-900 transition-colors group-hover:text-indigo-600">{task.title}</h4>

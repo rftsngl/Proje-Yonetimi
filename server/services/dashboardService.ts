@@ -131,6 +131,13 @@ const VALID_DEPARTMENTS = [
 
 const pool = getPool();
 
+const getActorWorkspaceId = async (actorUserId: string): Promise<string> => {
+  const [rows] = await pool.query<RowDataPacket[]>('SELECT workspace_id FROM users WHERE id = ? LIMIT 1', [actorUserId]);
+  if (!rows.length || !rows[0].workspace_id) {
+    throw new Error('Kullanıcıya ait workspace bulunamadı.');
+  }
+  return rows[0].workspace_id as string;
+};
 const splitGrouped = (value: string | null, separator = ',') => (value ? value.split(separator).filter(Boolean) : []);
 
 const deriveParentStatus = (statuses: Array<'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti'>) => {
@@ -400,7 +407,7 @@ const getTaskAttachments = async () => {
   }, {});
 };
 
-const getTasks = async () => {
+const getTasks = async (workspaceId: string) => {
   const [rows, commentsMap, attachmentsMap] = await Promise.all([
     pool.query<TaskRow[]>(`
       SELECT
@@ -420,9 +427,10 @@ const getTasks = async () => {
       INNER JOIN projects p ON p.id = t.project_id
       LEFT JOIN task_assignees ta ON ta.task_id = t.id
       LEFT JOIN users u ON u.id = ta.user_id
+      WHERE p.workspace_id = ?
       GROUP BY t.id
       ORDER BY COALESCE(t.due_date, DATE_ADD(CURDATE(), INTERVAL 365 DAY)), t.created_at DESC
-    `),
+    `, [workspaceId]),
     getTaskComments(),
     getTaskAttachments(),
   ]);
@@ -459,7 +467,7 @@ const getTasks = async () => {
   }));
 };
 
-const getProjects = async () => {
+const getProjects = async (workspaceId: string) => {
   const [rows] = await pool.query<ProjectRow[]>(`
     SELECT
       p.id,
@@ -488,9 +496,10 @@ const getProjects = async () => {
       FROM tasks
       GROUP BY project_id
     ) taskStats ON taskStats.project_id = p.id
+    WHERE p.workspace_id = ?
     GROUP BY p.id
     ORDER BY p.created_at DESC
-  `);
+  `, [workspaceId]);
 
   return rows.map((row) => ({
     id: row.id,
@@ -509,9 +518,10 @@ const getProjects = async () => {
   }));
 };
 
-const getCalendarEvents = async () => {
+const getCalendarEvents = async (workspaceId: string) => {
   const [rows] = await pool.query<CalendarRow[]>(
-    'SELECT id, title, date, end_date AS endDate, reminder_offset AS reminderOffset, color, event_type AS eventType FROM calendar_events ORDER BY date ASC, created_at ASC',
+    'SELECT id, title, date, end_date AS endDate, reminder_offset AS reminderOffset, color, event_type AS eventType FROM calendar_events WHERE workspace_id = ? ORDER BY date ASC, created_at ASC',
+    [workspaceId]
   );
   return rows.map((row) => ({
     id: row.id,
@@ -524,14 +534,15 @@ const getCalendarEvents = async () => {
   }));
 };
 
-const getUsers = async () => {
+const getUsers = async (workspaceId: string) => {
   const [rows] = await pool.query<UserRow[]>(
-    'SELECT id, name, avatar, role, email, status, last_active AS lastActive, department FROM users ORDER BY created_at ASC',
+    'SELECT id, name, avatar, role, email, status, last_active AS lastActive, department FROM users WHERE workspace_id = ? ORDER BY created_at ASC',
+    [workspaceId]
   );
   return rows;
 };
 
-const getTeamMembers = async () => {
+const getTeamMembers = async (workspaceId: string) => {
   const [rows] = await pool.query<UserRow[]>(`
     SELECT
       u.id,
@@ -547,9 +558,10 @@ const getTeamMembers = async () => {
     FROM users u
     LEFT JOIN project_members pm ON pm.user_id = u.id
     LEFT JOIN task_assignees ta ON ta.user_id = u.id
+    WHERE u.workspace_id = ?
     GROUP BY u.id
     ORDER BY u.created_at ASC
-  `);
+  `, [workspaceId]);
 
   return rows.map((row) => ({
     id: row.id,
@@ -583,9 +595,10 @@ const getNotifications = async (userId: string) => {
   }));
 };
 
-const getProjectProgress = async () => {
+const getProjectProgress = async (workspaceId: string) => {
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT id, name, progress, theme_color AS color FROM projects WHERE status = 'Aktif' ORDER BY progress DESC LIMIT 4`,
+    `SELECT id, name, progress, theme_color AS color FROM projects WHERE status = 'Aktif' AND workspace_id = ? ORDER BY progress DESC LIMIT 4`,
+    [workspaceId]
   );
 
   return rows.map((row, index) => ({
@@ -648,14 +661,15 @@ export const getBootstrapData = async (currentUser: {
   status?: 'Online' | 'Offline' | 'Busy';
   lastActive?: string;
   department?: string;
+  workspaceId: string;
 }) => {
   const [tasks, projects, calendarEvents, teamMembers, notifications, users] = await Promise.all([
-    getTasks(),
-    getProjects(),
-    getCalendarEvents(),
-    getTeamMembers(),
+    getTasks(currentUser.workspaceId),
+    getProjects(currentUser.workspaceId),
+    getCalendarEvents(currentUser.workspaceId),
+    getTeamMembers(currentUser.workspaceId),
     getNotifications(currentUser.id),
-    getUsers(),
+    getUsers(currentUser.workspaceId),
   ]);
 
   // JIT Reminder Check
@@ -745,10 +759,14 @@ export const createProject = async (payload: {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
+
+    const [userRows] = await connection.query<RowDataPacket[]>('SELECT workspace_id FROM users WHERE id = ?', [actorUserId]);
+    const workspaceId = userRows[0]?.workspace_id || null;
+
     await connection.query(
-      `INSERT INTO projects (id, name, description, manager_id, progress, start_date, end_date, status, category, theme_color)
-       VALUES (?, ?, ?, ?, 0, ?, ?, 'Aktif', ?, ?)`,
-      [id, payload.name, payload.description, payload.managerId, payload.startDate || null, payload.endDate || null, payload.category, payload.themeColor || 'bg-indigo-600'],
+      `INSERT INTO projects (id, name, description, manager_id, progress, start_date, end_date, status, category, theme_color, workspace_id)
+       VALUES (?, ?, ?, ?, 0, ?, ?, 'Aktif', ?, ?, ?)`,
+      [id, payload.name, payload.description, payload.managerId, payload.startDate || null, payload.endDate || null, payload.category, payload.themeColor || 'bg-indigo-600', workspaceId],
     );
     await connection.query('INSERT INTO project_members (project_id, user_id) VALUES (?, ?)', [id, payload.managerId]);
     await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
@@ -762,8 +780,8 @@ export const createProject = async (payload: {
     ]);
     if (payload.endDate) {
       await connection.query(
-        'INSERT INTO calendar_events (id, title, date, color, event_type, project_id) VALUES (?, ?, ?, ?, ?, ?)',
-        [createEntityId('EV'), `${payload.name} teslim tarihi`, payload.endDate, 'bg-indigo-100 text-indigo-700 border-indigo-200', 'teslim', id],
+        'INSERT INTO calendar_events (id, title, date, color, event_type, project_id, workspace_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [createEntityId('EV'), `${payload.name} teslim tarihi`, payload.endDate, 'bg-indigo-100 text-indigo-700 border-indigo-200', 'teslim', id, workspaceId],
       );
     }
     await connection.commit();
@@ -783,10 +801,13 @@ export const createCalendarEvent = async (payload: {
   color: string;
   eventType: string;
 }, actorUserId: string) => {
+  const [userRows] = await pool.query<RowDataPacket[]>('SELECT workspace_id FROM users WHERE id = ?', [actorUserId]);
+  const workspaceId = userRows[0]?.workspace_id || null;
+
   const calendarEventId = createEntityId('EV');
   await pool.query(
-    'INSERT INTO calendar_events (id, title, date, end_date, reminder_offset, color, event_type, project_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)',
-    [calendarEventId, payload.title, payload.date, payload.endDate || null, payload.reminderOffset || 0, payload.color, payload.eventType],
+    'INSERT INTO calendar_events (id, title, date, end_date, reminder_offset, color, event_type, project_id, workspace_id) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)',
+    [calendarEventId, payload.title, payload.date, payload.endDate || null, payload.reminderOffset || 0, payload.color, payload.eventType, workspaceId],
   );
 
   await pool.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
@@ -801,12 +822,13 @@ export const createCalendarEvent = async (payload: {
 };
 
 export const deleteCalendarEvent = async (eventId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     const [eventRows] = await connection.query<RowDataPacket[]>(
-      'SELECT title, date FROM calendar_events WHERE id = ? LIMIT 1',
-      [eventId],
+      'SELECT title, date FROM calendar_events WHERE id = ? AND workspace_id = ? LIMIT 1',
+      [eventId, workspaceId],
     );
 
     if (!eventRows.length) {
@@ -849,14 +871,15 @@ export const updateProject = async (projectId: string, payload: {
   progress?: number;
   status?: 'Aktif' | 'Tamamlandı';
 }, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     await connection.query(
       `UPDATE projects
        SET name = ?, description = ?, manager_id = ?, category = ?, start_date = ?, end_date = ?, theme_color = ?, progress = ?, status = ?
-       WHERE id = ?`,
-      [payload.name, payload.description, payload.managerId, payload.category, payload.startDate || null, payload.endDate || null, payload.themeColor || 'bg-indigo-600', Math.max(0, Math.min(100, payload.progress ?? 0)), payload.status || 'Aktif', projectId],
+       WHERE id = ? AND workspace_id = ?`,
+      [payload.name, payload.description, payload.managerId, payload.category, payload.startDate || null, payload.endDate || null, payload.themeColor || 'bg-indigo-600', Math.max(0, Math.min(100, payload.progress ?? 0)), payload.status || 'Aktif', projectId, workspaceId],
     );
     await connection.query('INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)', [projectId, payload.managerId]);
     await connection.query(
@@ -872,8 +895,8 @@ export const updateProject = async (projectId: string, payload: {
       );
       if (!calendarRows.length) {
         await connection.query(
-          'INSERT INTO calendar_events (id, title, date, color, event_type, project_id) VALUES (?, ?, ?, ?, ?, ?)',
-          [createEntityId('EV'), `${payload.name} teslim tarihi`, payload.endDate, 'bg-indigo-100 text-indigo-700 border-indigo-200', 'teslim', projectId],
+          'INSERT INTO calendar_events (id, title, date, color, event_type, project_id, workspace_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [createEntityId('EV'), `${payload.name} teslim tarihi`, payload.endDate, 'bg-indigo-100 text-indigo-700 border-indigo-200', 'teslim', projectId, workspaceId],
         );
       }
     }
@@ -896,10 +919,11 @@ export const updateProject = async (projectId: string, payload: {
 };
 
 export const deleteProject = async (projectId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [projectRows] = await connection.query<RowDataPacket[]>('SELECT name FROM projects WHERE id = ? LIMIT 1', [projectId]);
+    const [projectRows] = await connection.query<RowDataPacket[]>('SELECT name FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1', [projectId, workspaceId]);
     if (!projectRows.length) {
       await connection.rollback();
       return false;
@@ -926,11 +950,12 @@ export const deleteProject = async (projectId: string, actorUserId: string) => {
 };
 
 export const addProjectMember = async (projectId: string, userId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [projectRows] = await connection.query<RowDataPacket[]>('SELECT name FROM projects WHERE id = ? LIMIT 1', [projectId]);
-    const [userRows] = await connection.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? LIMIT 1', [userId]);
+    const [projectRows] = await connection.query<RowDataPacket[]>('SELECT name FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1', [projectId, workspaceId]);
+    const [userRows] = await connection.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? AND workspace_id = ? LIMIT 1', [userId, workspaceId]);
     if (!projectRows.length || !userRows.length) {
       await connection.rollback();
       return false;
@@ -965,9 +990,12 @@ export const createTask = async (payload: {
   dueDate?: string;
   priority: 'Yüksek' | 'Orta' | 'Düşük';
 }, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const id = createEntityId('TSK');
   const connection = await pool.getConnection();
   try {
+    const [projectRows] = await connection.query<RowDataPacket[]>('SELECT id FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1', [payload.projectId, workspaceId]);
+    if (!projectRows.length) throw new Error('Geçersiz proje veya yetkiniz yok.');
     await validateTaskParentLink({ projectId: payload.projectId, parentTaskId: payload.parentTaskId || null });
     await connection.beginTransaction();
     await connection.query(
@@ -1023,14 +1051,18 @@ export const updateTask = async (taskId: string, payload: {
   priority: 'Yüksek' | 'Orta' | 'Düşük';
   status?: 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti';
 }, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
   try {
+    const [projectRows] = await connection.query<RowDataPacket[]>('SELECT id FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1', [payload.projectId, workspaceId]);
+    if (!projectRows.length) throw new Error('Geçersiz proje veya yetkiniz yok.');
     await validateTaskParentLink({ taskId, projectId: payload.projectId, parentTaskId: payload.parentTaskId || null });
     await connection.beginTransaction();
     await connection.query(
-      `UPDATE tasks
-       SET title = ?, description = ?, parent_task_id = ?, priority = ?, status = ?, start_date = ?, due_date = ?, project_id = ?
-       WHERE id = ?`,
+      `UPDATE tasks t
+       INNER JOIN projects p ON p.id = t.project_id
+       SET t.title = ?, t.description = ?, t.parent_task_id = ?, t.priority = ?, t.status = ?, t.start_date = ?, t.due_date = ?, t.project_id = ?
+       WHERE t.id = ? AND p.workspace_id = ?`,
       [
         payload.title,
         payload.description,
@@ -1041,6 +1073,7 @@ export const updateTask = async (taskId: string, payload: {
         payload.dueDate || null,
         payload.projectId,
         taskId,
+        workspaceId,
       ],
     );
     await connection.query('DELETE FROM task_assignees WHERE task_id = ?', [taskId]);
@@ -1066,15 +1099,27 @@ export const updateTask = async (taskId: string, payload: {
   }
 };
 
-export const updateTaskStatus = async (taskId: string, status: 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti') => {
-  const [result] = await pool.query<ResultSetHeader>('UPDATE tasks SET status = ? WHERE id = ?', [status, taskId]);
+export const updateTaskStatus = async (taskId: string, status: 'Yapılacak' | 'Devam Ediyor' | 'Tamamlandı' | 'Gecikti', actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [result] = await pool.query<ResultSetHeader>(
+    'UPDATE tasks t INNER JOIN projects p ON p.id = t.project_id SET t.status = ? WHERE t.id = ? AND p.workspace_id = ?',
+    [status, taskId, workspaceId]
+  );
   if (result.affectedRows > 0) {
     await syncAncestorStatuses(taskId);
   }
   return result.affectedRows > 0;
 };
 
-export const updateTaskParent = async (taskId: string, projectId: string, parentTaskId?: string | null) => {
+export const updateTaskParent = async (taskId: string, projectId: string, parentTaskId?: string | null, actorUserId?: string) => {
+  if (actorUserId) {
+    const workspaceId = await getActorWorkspaceId(actorUserId);
+    const [taskRows] = await pool.query<RowDataPacket[]>(
+      'SELECT t.id FROM tasks t INNER JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.workspace_id = ? LIMIT 1',
+      [taskId, workspaceId]
+    );
+    if (!taskRows.length) throw new Error('Görev bulunamadı.');
+  }
   await validateTaskParentLink({ taskId, projectId, parentTaskId });
   const [result] = await pool.query<ResultSetHeader>('UPDATE tasks SET parent_task_id = ? WHERE id = ?', [parentTaskId || null, taskId]);
   if (result.affectedRows > 0) {
@@ -1096,12 +1141,13 @@ export const canUserUpdateTaskStatus = async (taskId: string, userId: string, ro
   return rows.length > 0;
 };
 
-export const updateUserRole = async (userId: string, role: string) => {
+export const updateUserRole = async (userId: string, role: string, actorUserId: string) => {
   if (!VALID_APP_ROLES.includes(role as (typeof VALID_APP_ROLES)[number])) {
     throw new Error('Geçersiz rol seçimi.');
   }
 
-  const [result] = await pool.query<ResultSetHeader>('UPDATE users SET role = ? WHERE id = ?', [role, userId]);
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [result] = await pool.query<ResultSetHeader>('UPDATE users SET role = ? WHERE id = ? AND workspace_id = ?', [role, userId, workspaceId]);
   return result.affectedRows > 0;
 };
 
@@ -1121,32 +1167,94 @@ export const getUserRoleAndDepartment = async (userId: string) => {
   };
 };
 
-export const getAdminCount = async () => {
+export const getAdminCount = async (actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const [rows] = await pool.query<RowDataPacket[]>(
-    "SELECT COUNT(*) AS total FROM users WHERE role = 'Admin'",
+    "SELECT COUNT(*) AS total FROM users WHERE role = 'Admin' AND workspace_id = ?",
+    [workspaceId]
   );
 
   return Number(rows[0]?.total || 0);
 };
 
-export const updateUserDepartment = async (userId: string, department: string) => {
+export const updateUserDepartment = async (userId: string, department: string, actorUserId: string) => {
   if (!VALID_DEPARTMENTS.includes(department as (typeof VALID_DEPARTMENTS)[number])) {
     throw new Error('Geçersiz departman seçimi.');
   }
 
-  const [result] = await pool.query<ResultSetHeader>('UPDATE users SET department = ? WHERE id = ?', [department, userId]);
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [result] = await pool.query<ResultSetHeader>('UPDATE users SET department = ? WHERE id = ? AND workspace_id = ?', [department, userId, workspaceId]);
   return result.affectedRows > 0;
 };
 
+export const updateMemberInfo = async (
+  userId: string,
+  payload: { name?: string; email?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+
+  // Hedef kullanıcı var mı kontrol et
+  const [targetRows] = await pool.query<RowDataPacket[]>(
+    'SELECT id, name, email FROM users WHERE id = ? AND workspace_id = ? LIMIT 1',
+    [userId, workspaceId],
+  );
+
+  if (!targetRows.length) {
+    throw new Error('Kullanıcı bulunamadı.');
+  }
+
+  const fields: string[] = [];
+  const values: (string)[] = [];
+
+  if (payload.name?.trim()) {
+    const trimmedName = payload.name.trim();
+    if (trimmedName.length < 2) throw new Error('İsim en az 2 karakter olmalıdır.');
+    fields.push('name = ?');
+    values.push(trimmedName);
+  }
+
+  if (payload.email?.trim()) {
+    const trimmedEmail = payload.email.trim().toLowerCase();
+    // Basit email formatı kontrolü
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      throw new Error('Geçersiz e-posta formatı.');
+    }
+    // E-posta benzersizlik kontrolü (kendisi hariç)
+    const [existingRows] = await pool.query<RowDataPacket[]>(
+      'SELECT id FROM users WHERE email = ? AND id != ? LIMIT 1',
+      [trimmedEmail, userId],
+    );
+    if (existingRows.length > 0) {
+      throw new Error('Bu e-posta adresi başka bir kullanıcı tarafından kullanılıyor.');
+    }
+    fields.push('email = ?');
+    values.push(trimmedEmail);
+  }
+
+  if (fields.length === 0) {
+    throw new Error('Güncellenecek bilgi belirtilmedi.');
+  }
+
+  values.push(userId, workspaceId);
+  await pool.query<ResultSetHeader>(
+    `UPDATE users SET ${fields.join(', ')} WHERE id = ? AND workspace_id = ?`,
+    values,
+  );
+
+  return true;
+};
+
 export const deleteUser = async (userId: string, payload: { actorUserId: string }) => {
+  const workspaceId = await getActorWorkspaceId(payload.actorUserId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
 
     // 1. Kullanıcı var mı?
     const [userRows] = await connection.query<RowDataPacket[]>(
-      'SELECT id, name, role FROM users WHERE id = ? LIMIT 1',
-      [userId]
+      'SELECT id, name, role FROM users WHERE id = ? AND workspace_id = ? LIMIT 1',
+      [userId, workspaceId]
     );
 
     if (!userRows.length) {
@@ -1158,7 +1266,8 @@ export const deleteUser = async (userId: string, payload: { actorUserId: string 
     // 2. Son admin mi?
     if (user.role === 'Admin') {
       const [adminRows] = await connection.query<RowDataPacket[]>(
-        "SELECT COUNT(*) AS total FROM users WHERE role = 'Admin'"
+        "SELECT COUNT(*) AS total FROM users WHERE role = 'Admin' AND workspace_id = ?",
+        [workspaceId]
       );
       if (Number(adminRows[0]?.total || 0) <= 1) {
         throw new Error('Sistemdeki son admini silemezsiniz.');
@@ -1167,8 +1276,8 @@ export const deleteUser = async (userId: string, payload: { actorUserId: string 
 
     // 3. Proje yöneticisi mi?
     const [projectRows] = await connection.query<RowDataPacket[]>(
-      'SELECT name FROM projects WHERE manager_id = ? LIMIT 1',
-      [userId]
+      'SELECT name FROM projects WHERE manager_id = ? AND workspace_id = ? LIMIT 1',
+      [userId, workspaceId]
     );
 
     if (projectRows.length > 0) {
@@ -1179,15 +1288,16 @@ export const deleteUser = async (userId: string, payload: { actorUserId: string 
 
     // 4. Silme işleminden önce log oluştur
     await connection.query(
-      `INSERT INTO user_audit_logs (id, actor_user_id, target_user_id, action, old_value, new_value)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO user_audit_logs (id, actor_user_id, target_user_id, action, old_value, new_value, workspace_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         createEntityId('AUD'),
         payload.actorUserId,
         userId,
         'user_deletion',
         user.name, // Silinen kişinin adını saklıyoruz
-        null
+        null,
+        workspaceId
       ]
     );
 
@@ -1214,9 +1324,10 @@ export const createUserAuditLog = async (payload: {
   oldValue?: string | null;
   newValue?: string | null;
 }) => {
+  const workspaceId = await getActorWorkspaceId(payload.actorUserId);
   await pool.query(
-    `INSERT INTO user_audit_logs (id, actor_user_id, target_user_id, action, old_value, new_value)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO user_audit_logs (id, actor_user_id, target_user_id, action, old_value, new_value, workspace_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       createEntityId('AUD'),
       payload.actorUserId,
@@ -1224,11 +1335,13 @@ export const createUserAuditLog = async (payload: {
       payload.action,
       payload.oldValue || null,
       payload.newValue || null,
+      workspaceId,
     ],
   );
 };
 
-export const getUserAuditLogs = async (limit = 100) => {
+export const getUserAuditLogs = async (limit = 100, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const safeLimit = Math.max(1, Math.min(limit, 200));
 
   const [rows] = await pool.query<UserAuditLogRow[]>(
@@ -1245,9 +1358,10 @@ export const getUserAuditLogs = async (limit = 100) => {
      FROM user_audit_logs l
      LEFT JOIN users actor ON actor.id = l.actor_user_id
      LEFT JOIN users target ON target.id = l.target_user_id
+     WHERE l.workspace_id = ?
      ORDER BY l.created_at DESC
      LIMIT ?`,
-    [safeLimit],
+    [workspaceId, safeLimit],
   );
 
   return rows.map((row) => ({
@@ -1264,10 +1378,11 @@ export const getUserAuditLogs = async (limit = 100) => {
 };
 
 export const deleteTask = async (taskId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT title FROM tasks WHERE id = ? LIMIT 1', [taskId]);
+    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT t.title FROM tasks t INNER JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.workspace_id = ? LIMIT 1', [taskId, workspaceId]);
     if (!taskRows.length) {
       await connection.rollback();
       return false;
@@ -1318,11 +1433,12 @@ export const deleteTask = async (taskId: string, actorUserId: string) => {
 };
 
 export const addTaskComment = async (taskId: string, userId: string, content: string) => {
+  const workspaceId = await getActorWorkspaceId(userId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT title FROM tasks WHERE id = ? LIMIT 1', [taskId]);
-    const [userRows] = await connection.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? LIMIT 1', [userId]);
+    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT t.title FROM tasks t INNER JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.workspace_id = ? LIMIT 1', [taskId, workspaceId]);
+    const [userRows] = await connection.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? AND workspace_id = ? LIMIT 1', [userId, workspaceId]);
     if (!taskRows.length || !userRows.length) {
       await connection.rollback();
       return false;
@@ -1348,22 +1464,24 @@ export const addTaskComment = async (taskId: string, userId: string, content: st
   }
 };
 
-export const updateTaskComment = async (taskId: string, commentId: string, content: string) => {
+export const updateTaskComment = async (taskId: string, commentId: string, content: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const [result] = await pool.query<ResultSetHeader>(
-    'UPDATE task_comments SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND task_id = ?',
-    [content, commentId, taskId],
+    'UPDATE task_comments c INNER JOIN tasks t ON t.id = c.task_id INNER JOIN projects p ON p.id = t.project_id SET c.content = ?, c.updated_at = CURRENT_TIMESTAMP WHERE c.id = ? AND c.task_id = ? AND p.workspace_id = ?',
+    [content, commentId, taskId, workspaceId],
   );
 
   return result.affectedRows > 0;
 };
 
-export const deleteTaskComment = async (taskId: string, commentId: string) => {
+export const deleteTaskComment = async (taskId: string, commentId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     const [commentRows] = await connection.query<RowDataPacket[]>(
-      'SELECT content FROM task_comments WHERE id = ? AND task_id = ? LIMIT 1',
-      [commentId, taskId],
+      'SELECT c.content FROM task_comments c INNER JOIN tasks t ON t.id = c.task_id INNER JOIN projects p ON p.id = t.project_id WHERE c.id = ? AND c.task_id = ? AND p.workspace_id = ? LIMIT 1',
+      [commentId, taskId, workspaceId],
     );
 
     if (!commentRows.length) {
@@ -1387,11 +1505,12 @@ export const deleteTaskComment = async (taskId: string, commentId: string) => {
 };
 
 export const addTaskAssignee = async (taskId: string, userId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT title FROM tasks WHERE id = ? LIMIT 1', [taskId]);
-    const [userRows] = await connection.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? LIMIT 1', [userId]);
+    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT t.title FROM tasks t INNER JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.workspace_id = ? LIMIT 1', [taskId, workspaceId]);
+    const [userRows] = await connection.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? AND workspace_id = ? LIMIT 1', [userId, workspaceId]);
     if (!taskRows.length || !userRows.length) {
       await connection.rollback();
       return false;
@@ -1416,10 +1535,11 @@ export const addTaskAssignee = async (taskId: string, userId: string, actorUserI
   }
 };
 
-export const removeTaskAssignee = async (taskId: string, userId: string) => {
+export const removeTaskAssignee = async (taskId: string, userId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const [result] = await pool.query<ResultSetHeader>(
-    'DELETE FROM task_assignees WHERE task_id = ? AND user_id = ?',
-    [taskId, userId],
+    'DELETE ta FROM task_assignees ta INNER JOIN tasks t ON t.id = ta.task_id INNER JOIN projects p ON p.id = t.project_id WHERE ta.task_id = ? AND ta.user_id = ? AND p.workspace_id = ?',
+    [taskId, userId, workspaceId],
   );
 
   return result.affectedRows > 0;
@@ -1430,10 +1550,11 @@ export const addTaskAttachment = async (
   payload: { name: string; fileType: string; fileSizeLabel: string; mimeType?: string | null; fileSizeBytes?: number | null; filePath?: string | null },
   actorUserId: string,
 ) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT title FROM tasks WHERE id = ? LIMIT 1', [taskId]);
+    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT t.title FROM tasks t INNER JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.workspace_id = ? LIMIT 1', [taskId, workspaceId]);
     if (!taskRows.length) {
       await connection.rollback();
       return false;
@@ -1579,4 +1700,13 @@ export const updateCalendarEvent = async (eventId: string, payload: {
   ]);
 
   return true;
+};
+
+export const updateWorkspaceName = async (actorUserId: string, newName: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [result] = await pool.query<ResultSetHeader>(
+    'UPDATE workspaces SET name = ? WHERE id = ?',
+    [newName, workspaceId],
+  );
+  return result.affectedRows > 0;
 };

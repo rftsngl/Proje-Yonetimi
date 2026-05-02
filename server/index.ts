@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import path from 'node:path';
+import fs from 'node:fs';
 import { env } from './config/env.js';
 import { initializeDatabase } from './db/init.js';
 import { apiRouter } from './routes/api.js';
@@ -44,6 +45,13 @@ const listenWithFallback = (preferredPort: number, maxAttempts = 10) =>
   });
 
 const start = async () => {
+  // Ensure uploads directory exists
+  const uploadsPath = path.join(process.cwd(), 'uploads');
+  if (!fs.existsSync(uploadsPath)) {
+    fs.mkdirSync(uploadsPath, { recursive: true });
+    console.log('Uploads klasörü oluşturuldu.');
+  }
+
   await initializeDatabase();
 
   const activePort = await listenWithFallback(env.port);

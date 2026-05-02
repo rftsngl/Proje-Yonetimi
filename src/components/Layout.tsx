@@ -59,7 +59,7 @@ export default function Layout({
         />
         
         <main className="flex-1 overflow-x-hidden p-4 sm:p-5 lg:p-6">
-          <div className="mx-auto max-w-7xl min-w-0">
+          <div className="mx-auto min-w-0">
             <AnimatePresence mode="wait">
               <motion.div
                 key={activeTab}

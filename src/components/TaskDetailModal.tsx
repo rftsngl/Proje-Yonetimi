@@ -9,7 +9,6 @@ import {
   Download,
   Edit2,
   MessageSquare,
-  MoreVertical,
   Paperclip,
   Pencil,
   Plus,
@@ -257,11 +256,15 @@ export default function TaskDetailModal({
                 >
                   <Edit2 className="h-5 w-5" />
                 </button>
-                <button className="rounded-xl p-2 text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-600">
+                <button
+                  onClick={() => {
+                    const text = `${task.id} - ${task.title}`;
+                    navigator.clipboard.writeText(text);
+                  }}
+                  className="rounded-xl p-2 text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-600"
+                  title="Görev bilgisini kopyala"
+                >
                   <Share2 className="h-5 w-5" />
-                </button>
-                <button className="rounded-xl p-2 text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-600">
-                  <MoreVertical className="h-5 w-5" />
                 </button>
                 <button
                   onClick={onClose}
@@ -629,9 +632,15 @@ export default function TaskDetailModal({
                   </div>
 
                   <div className="space-y-3 border-t border-slate-100 pt-8">
-                    <button className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-slate-50">
+                    <button
+                      onClick={() => {
+                        const info = `Görev: ${task.title}\nID: ${task.id}\nDurum: ${task.status}\nProje: ${task.project}\nÖncelik: ${task.priority}`;
+                        navigator.clipboard.writeText(info);
+                      }}
+                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-slate-50"
+                    >
                       <Copy className="h-4 w-4" />
-                      Gorevi Kopyala
+                      Görevi Kopyala
                     </button>
                     <button
                       onClick={() => onDelete?.(task)}

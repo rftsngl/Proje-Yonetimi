@@ -80,13 +80,15 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
       </div>
 
       <div className="rounded-3xl border border-slate-100 bg-white shadow-sm">
-        <div className="divide-y divide-slate-50">
-          {notifications.map((notification, index) => (
+        <motion.div 
+          className="divide-y divide-slate-50"
+          initial="hidden" animate="visible"
+          variants={{ visible: { transition: { staggerChildren: 0.04 } } }}
+        >
+          {notifications.map((notification) => (
             <motion.div
               key={notification.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.05 }}
+              variants={{ hidden: { opacity: 0, x: -15 }, visible: { opacity: 1, x: 0 } }}
               className={`group relative flex items-start gap-4 p-6 transition-all hover:bg-slate-50/50 ${!notification.read ? 'bg-indigo-50/20' : ''}`}
             >
               {!notification.read && <div className="absolute bottom-0 left-0 top-0 w-1 bg-indigo-500" />}
@@ -163,7 +165,7 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
               </div>
             </motion.div>
           ))}
-        </div>
+        </motion.div>
 
         {notifications.length === 0 && (
           <div className="p-20 text-center">
@@ -190,12 +192,19 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
 
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsModalOpen(false)}
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
             >
               <h3 className="text-xl font-bold text-slate-900">Tümünü Sil</h3>
               <p className="mt-2 text-sm text-slate-500">

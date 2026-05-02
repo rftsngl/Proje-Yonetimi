@@ -18,6 +18,9 @@ export const updateProfile = (payload: UpdateProfilePayload) =>
 export const changePassword = (payload: ChangePasswordPayload) =>
   api.put<{ ok: boolean; message: string }>('/settings/password', payload);
 
+export const updateWorkspace = (payload: { name: string }) =>
+  api.patch<{ ok: boolean }>('/settings/workspace', payload);
+
 export const resetSettings = () =>
   api.post<SettingsBundle>('/settings/reset');
 

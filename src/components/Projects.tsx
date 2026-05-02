@@ -12,6 +12,7 @@ interface ProjectsProps {
   onEditProject?: (project: Project) => void;
   onDeleteProject?: (project: Project) => void;
   canManageProjects?: boolean;
+  onGenerateReport?: (projectId: string) => void;
 }
 
 export default function Projects({
@@ -22,6 +23,7 @@ export default function Projects({
   onEditProject,
   onDeleteProject,
   canManageProjects,
+  onGenerateReport,
 }: ProjectsProps) {
   const [activeTab, setActiveTab] = useState<'Aktif' | 'Tamamlandı'>('Aktif');
   const [searchQuery, setSearchQuery] = useState('');

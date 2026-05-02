@@ -4,6 +4,12 @@ import { seedMissingPasswords } from '../services/authService.js';
 import { ensureDatabaseExists, getPool } from './pool.js';
 
 const schemaSql = `
+CREATE TABLE IF NOT EXISTS workspaces (
+  id VARCHAR(32) PRIMARY KEY,
+  name VARCHAR(160) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS users (
   id VARCHAR(32) PRIMARY KEY,
   name VARCHAR(120) NOT NULL,
@@ -14,7 +20,9 @@ CREATE TABLE IF NOT EXISTS users (
   last_active VARCHAR(64) DEFAULT NULL,
   department VARCHAR(120) DEFAULT NULL,
   password_hash VARCHAR(255) DEFAULT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  workspace_id VARCHAR(32) DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_users_workspace FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS projects (
@@ -28,8 +36,10 @@ CREATE TABLE IF NOT EXISTS projects (
   status ENUM('Aktif', 'Tamamlandı') NOT NULL DEFAULT 'Aktif',
   category VARCHAR(120) NOT NULL,
   theme_color VARCHAR(32) NOT NULL DEFAULT 'bg-indigo-600',
+  workspace_id VARCHAR(32) DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_projects_manager FOREIGN KEY (manager_id) REFERENCES users(id)
+  CONSTRAINT fk_projects_manager FOREIGN KEY (manager_id) REFERENCES users(id),
+  CONSTRAINT fk_projects_workspace FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS project_members (
@@ -110,8 +120,10 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   event_type VARCHAR(64) NOT NULL,
   reminder_offset INT DEFAULT 0,
   project_id VARCHAR(32) DEFAULT NULL,
+  workspace_id VARCHAR(32) DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_calendar_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+  CONSTRAINT fk_calendar_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+  CONSTRAINT fk_calendar_workspace FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS auth_sessions (
@@ -130,7 +142,9 @@ CREATE TABLE IF NOT EXISTS user_audit_logs (
   action ENUM('role_update', 'department_update', 'user_deletion') NOT NULL,
   old_value VARCHAR(191) DEFAULT NULL,
   new_value VARCHAR(191) DEFAULT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+  workspace_id VARCHAR(32) DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_user_audit_logs_workspace FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS user_settings (
@@ -148,10 +162,11 @@ CREATE TABLE IF NOT EXISTS user_settings (
 `;
 
 const baseSeedStatements = [
-  `INSERT IGNORE INTO users (id, name, avatar, role, email, status, last_active, department) VALUES
-    ('user7', 'Örnek Kullanıcı', 'user7', 'Admin', 'ornek@zodiac.com', 'Offline', NULL, 'Genel')`,
-  `INSERT IGNORE INTO projects (id, name, description, manager_id, progress, start_date, end_date, status, category, theme_color) VALUES
-    ('PRJ-001', 'Başlangıç Projesi', 'Sistemi keşfetmeniz için oluşturulmuş örnek proje.', 'user7', 0, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'Aktif', 'Genel', 'bg-indigo-600')`,
+  `INSERT IGNORE INTO workspaces (id, name) VALUES ('WS-001', 'Örnek Şirket')`,
+  `INSERT IGNORE INTO users (id, name, avatar, role, email, status, last_active, department, workspace_id) VALUES
+    ('user7', 'Örnek Kullanıcı', 'user7', 'Admin', 'ornek@zodiac.com', 'Offline', NULL, 'Genel', 'WS-001')`,
+  `INSERT IGNORE INTO projects (id, name, description, manager_id, progress, start_date, end_date, status, category, theme_color, workspace_id) VALUES
+    ('PRJ-001', 'Başlangıç Projesi', 'Sistemi keşfetmeniz için oluşturulmuş örnek proje.', 'user7', 0, CURDATE(), DATE_ADD(CURDATE(), INTERVAL 30 DAY), 'Aktif', 'Genel', 'bg-indigo-600', 'WS-001')`,
   `INSERT IGNORE INTO project_members (project_id, user_id) VALUES
     ('PRJ-001', 'user7')`,
   `INSERT IGNORE INTO tasks (id, title, description, priority, status, project_id, comments_count, attachments_count) VALUES
@@ -160,6 +175,9 @@ const baseSeedStatements = [
     ('TSK-001', 'user7')`,
   `INSERT IGNORE INTO notifications (id, user_id, title, description, type, is_read, created_at) VALUES
     ('NTF-001', 'user7', 'Hoş Geldiniz', 'Görev Yönetimi Sistemine hoş geldiniz.', 'system', FALSE, NOW())`,
+  `UPDATE users SET workspace_id = 'WS-001' WHERE workspace_id IS NULL`,
+  `UPDATE projects SET workspace_id = 'WS-001' WHERE workspace_id IS NULL`,
+  `UPDATE calendar_events SET workspace_id = 'WS-001' WHERE workspace_id IS NULL`
 ];
 
 const commentSeedStatements: string[] = [];
@@ -199,13 +217,15 @@ export const initializeDatabase = async () => {
   await ensureColumnExists('tasks', 'attachments_count', 'INT NOT NULL DEFAULT 0');
   await ensureColumnExists('calendar_events', 'end_date', 'DATE DEFAULT NULL');
   await ensureColumnExists('calendar_events', 'reminder_offset', 'INT DEFAULT 0 AFTER event_type');
+  await ensureColumnExists('calendar_events', 'workspace_id', 'VARCHAR(32) DEFAULT NULL AFTER project_id');
   await ensureColumnExists('notifications', 'entity_type', 'VARCHAR(32) DEFAULT NULL AFTER type');
   await ensureColumnExists('notifications', 'entity_id', 'VARCHAR(32) DEFAULT NULL AFTER entity_type');
   await ensureColumnExists('user_settings', 'notify_task_assigned', 'BOOLEAN NOT NULL DEFAULT TRUE');
   await ensureColumnExists('user_settings', 'notify_project_updates', 'BOOLEAN NOT NULL DEFAULT TRUE');
   await ensureColumnExists('user_settings', 'notify_deadline_reminders', 'BOOLEAN NOT NULL DEFAULT TRUE');
-
-
+  await ensureColumnExists('users', 'workspace_id', 'VARCHAR(32) DEFAULT NULL AFTER password_hash');
+  await ensureColumnExists('projects', 'workspace_id', 'VARCHAR(32) DEFAULT NULL AFTER theme_color');
+  await ensureColumnExists('user_audit_logs', 'workspace_id', 'VARCHAR(32) DEFAULT NULL AFTER new_value');
   // Migrasyon: Önceki sürümde ASCII-safe yazılmış ENUM değerleri varsa Türkçe'ye çevir
   // Bu sorgular idempotent'tir (eğer zaten doğruysa etkilemez)
   await pool.query(`UPDATE tasks SET status = 'Yapılacak'  WHERE status = 'Yapilacak'`).catch(() => null);

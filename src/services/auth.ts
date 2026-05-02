@@ -23,3 +23,7 @@ export const logout = async () => {
     clearStoredAuthToken();
   }
 };
+
+export const resetPassword = async (payload: { email: string; newPassword: string }) => {
+  return api.post<{ ok: boolean; message: string }>('/auth/reset-password', payload);
+};

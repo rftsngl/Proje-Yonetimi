@@ -1,4 +1,4 @@
-import { Activity, Briefcase, Calendar, CheckCircle, ChevronDown, ChevronRight, Clock, Filter, Info, Layout, Mail, MoreVertical, Search, Trash2, User, UserPlus, X } from 'lucide-react';
+import { Activity, Briefcase, Calendar, CheckCircle, ChevronDown, ChevronRight, Clock, Edit3, Filter, Hash, Info, Layout, Lock, Mail, MoreVertical, Save, Search, Shield, Trash2, User, UserPlus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { AppRole, Project, TeamMember, UserAuditLogItem } from '../types';
@@ -96,6 +96,7 @@ interface TeamProps {
   auditLogs?: UserAuditLogItem[];
   isAuditLogsLoading?: boolean;
   onDeleteMember?: (userId: string) => Promise<void>;
+  onUpdateMemberInfo?: (userId: string, payload: { name?: string; email?: string }) => Promise<void>;
 }
 
 const formatAuditTime = (value: string) => {
@@ -128,6 +129,7 @@ export default function Team({
   projects,
   isAuditLogsLoading,
   onDeleteMember,
+  onUpdateMemberInfo,
 }: TeamProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDepartment, setSelectedDepartment] = useState('');
@@ -217,13 +219,15 @@ export default function Team({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {filteredMembers.map((member, index) => (
+      <motion.div 
+        className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
+        initial="hidden" animate="visible"
+        variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
+      >
+        {filteredMembers.map((member) => (
           <motion.div
             key={member.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}
+            variants={{ hidden: { opacity: 0, y: 15 }, visible: { opacity: 1, y: 0 } }}
             className="group relative rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md"
           >
             <div className="absolute right-4 top-4 flex items-center gap-1.5">
@@ -332,7 +336,7 @@ export default function Team({
             </div>
           </motion.div>
         ))}
-      </div>
+      </motion.div>
 
       {canManageRoles && (
         <div className="space-y-4 rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
@@ -400,6 +404,9 @@ export default function Team({
             member={selectedMemberForProfile}
             auditLogs={auditLogs.filter((log) => log.targetUserId === selectedMemberForProfile.id)}
             onClose={() => setSelectedMemberForProfile(null)}
+            isAdmin={!!canManageRoles}
+            onUpdateMemberInfo={onUpdateMemberInfo}
+            currentUserId={currentUserId}
           />
         )}
       </AnimatePresence>
@@ -585,7 +592,7 @@ function QuickActionMenu({ member, onClose, onAction, onViewProjects, onShowProf
   }, [onClose]);
 
   const actions = [
-    { label: 'Profili Görüntüle', icon: User, onClick: () => { onShowProfile(member); onAction(); } },
+    { label: 'Kullanıcı Bilgileri', icon: User, onClick: () => { onShowProfile(member); onAction(); } },
     { label: 'Mesaj Gönder', icon: Mail, onClick: () => { window.location.href = `mailto:${member.email}`; onAction(); } },
     { label: 'Projelerini Gör', icon: Layout, onClick: () => { onViewProjects(member); onAction(); } },
     { label: 'Üyeyi Çıkar', icon: Trash2, onClick: () => { onDeleteMember(member); onAction(); }, danger: true },
@@ -715,9 +722,47 @@ interface MemberProfileModalProps {
   member: TeamMember;
   auditLogs: UserAuditLogItem[];
   onClose: () => void;
+  isAdmin?: boolean;
+  onUpdateMemberInfo?: (userId: string, payload: { name?: string; email?: string }) => Promise<void>;
+  currentUserId?: string;
 }
 
-function MemberProfileModal({ member, auditLogs, onClose }: MemberProfileModalProps) {
+function MemberProfileModal({ member, auditLogs, onClose, isAdmin, onUpdateMemberInfo, currentUserId }: MemberProfileModalProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(member.name);
+  const [editEmail, setEditEmail] = useState(member.email || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const canEdit = isAdmin && onUpdateMemberInfo && member.id !== currentUserId;
+
+  const handleSave = async () => {
+    if (!onUpdateMemberInfo) return;
+    setSaveError(null);
+    setSaveSuccess(false);
+    setIsSaving(true);
+
+    const payload: { name?: string; email?: string } = {};
+    if (editName.trim() !== member.name) payload.name = editName.trim();
+    if (editEmail.trim() !== (member.email || '')) payload.email = editEmail.trim();
+
+    if (!payload.name && !payload.email) {
+      setIsEditing(false);
+      setIsSaving(false);
+      return;
+    }
+
+    try {
+      await onUpdateMemberInfo(member.id, payload);
+      setSaveSuccess(true);
+      setIsEditing(false);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Güncelleme başarısız.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <motion.div
@@ -804,6 +849,160 @@ function MemberProfileModal({ member, auditLogs, onClose }: MemberProfileModalPr
               </div>
             </div>
           </div>
+
+          {/* Admin-Only: Editable User Details */}
+          {isAdmin && (
+            <div className="mt-10">
+              <div className="flex items-center justify-between">
+                <h3 className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                  <Shield className="h-4 w-4 text-rose-500" />
+                  Yönetici Bilgileri
+                </h3>
+                {canEdit && (
+                  <button
+                    onClick={() => {
+                      if (isEditing) {
+                        setEditName(member.name);
+                        setEditEmail(member.email || '');
+                        setSaveError(null);
+                      }
+                      setIsEditing(!isEditing);
+                    }}
+                    className={`flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all ${
+                      isEditing
+                        ? 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        : 'bg-indigo-50 text-indigo-600 hover:bg-indigo-100'
+                    }`}
+                  >
+                    {isEditing ? (
+                      <><X className="h-3.5 w-3.5" /> Vazgeç</>
+                    ) : (
+                      <><Edit3 className="h-3.5 w-3.5" /> Düzenle</>
+                    )}
+                  </button>
+                )}
+              </div>
+
+              {saveSuccess && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-3 flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  Bilgiler başarıyla güncellendi.
+                </motion.div>
+              )}
+
+              {saveError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -5 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600"
+                >
+                  {saveError}
+                </motion.div>
+              )}
+
+              <div className="mt-4 space-y-3 rounded-2xl border border-slate-100 bg-slate-50/50 p-5">
+                {/* Ad Soyad */}
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-50 text-violet-500">
+                    <User className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ad Soyad</p>
+                    {isEditing ? (
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-900 transition-all focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    ) : (
+                      <p className="truncate text-sm font-semibold text-slate-900">{member.name}</p>
+                    )}
+                  </div>
+                </div>
+                {/* E-posta Adresi */}
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-50 text-blue-500">
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">E-posta Adresi</p>
+                    {isEditing ? (
+                      <input
+                        type="email"
+                        value={editEmail}
+                        onChange={(e) => setEditEmail(e.target.value)}
+                        className="mt-0.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold text-slate-900 transition-all focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    ) : (
+                      <p className="truncate text-sm font-semibold text-slate-900">{member.email || 'Belirtilmemiş'}</p>
+                    )}
+                  </div>
+                </div>
+                {/* Kullanıcı ID */}
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 text-indigo-500">
+                    <Hash className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Kullanıcı ID</p>
+                    <p className="truncate font-mono text-sm font-semibold text-slate-900">{member.id}</p>
+                  </div>
+                </div>
+                {/* Şifre Durumu */}
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-500">
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Şifre Durumu</p>
+                    <p className="text-sm font-semibold text-slate-900">Şifrelenmiş (bcrypt hash)</p>
+                  </div>
+                </div>
+                {/* Son Aktivite */}
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-500">
+                    <Calendar className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Son Aktivite</p>
+                    <p className="text-sm font-semibold text-slate-900">{member.lastActive ? new Date(member.lastActive).toLocaleString('tr-TR') : 'Bilinmiyor'}</p>
+                  </div>
+                </div>
+
+                {/* Kaydet Butonu */}
+                {isEditing && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    className="pt-2"
+                  >
+                    <button
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-all hover:bg-indigo-700 active:scale-[0.98] disabled:opacity-60 disabled:cursor-wait"
+                    >
+                      {isSaving ? (
+                        <>
+                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                          Kaydediliyor...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-4 w-4" />
+                          Değişiklikleri Kaydet
+                        </>
+                      )}
+                    </button>
+                  </motion.div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Activity Timeline */}
           <div className="mt-12">

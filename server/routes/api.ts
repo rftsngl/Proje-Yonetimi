@@ -35,8 +35,11 @@ import {
   setNotificationReadState,
   getPaginatedNotifications,
   deleteUser,
+  updateWorkspaceName,
+  updateMemberInfo,
 } from '../services/dashboardService.js';
-import { getUserFromToken, loginUser, logoutUser, registerUser } from '../services/authService.js';
+import { generateProjectReport } from '../services/aiService.js';
+import { getUserFromToken, loginUser, logoutUser, registerUser, resetPassword } from '../services/authService.js';
 import {
   changeOwnPassword,
   getUserSettingsBundle,
@@ -169,6 +172,39 @@ apiRouter.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
+apiRouter.get('/reports/projects', async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'Yetkisiz erişim' });
+
+    const authResult = await getUserFromToken(token);
+    if (!authResult || !authResult.user) return res.status(401).json({ message: 'Yetkisiz erişim' });
+    
+    const report = await generateProjectReport({ workspaceId: authResult.user.workspaceId });
+    res.json({ report });
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.get('/reports/projects/:projectId', async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'Yetkisiz erişim' });
+
+    const authResult = await getUserFromToken(token);
+    if (!authResult || !authResult.user) return res.status(401).json({ message: 'Yetkisiz erişim' });
+    
+    const { projectId } = req.params;
+    const report = await generateProjectReport({ projectId, workspaceId: authResult.user.workspaceId });
+    res.json({ report });
+  } catch (error) {
+    next(error);
+  }
+});
+
 apiRouter.post('/auth/login', async (req, res, next) => {
   try {
     const { email, password } = req.body;
@@ -193,9 +229,9 @@ apiRouter.post('/auth/login', async (req, res, next) => {
 
 apiRouter.post('/auth/register', async (req, res, next) => {
   try {
-    const { name, email, password, department } = req.body;
+    const { name, email, password, department, workspaceName } = req.body;
 
-    if (!name?.trim() || !email?.trim() || !password) {
+    if (!name?.trim() || !email?.trim() || !password || !workspaceName?.trim()) {
       return res.status(400).json({ message: 'Kayit icin zorunlu alanlar eksik.' });
     }
 
@@ -204,6 +240,7 @@ apiRouter.post('/auth/register', async (req, res, next) => {
       email: email.trim(),
       password,
       department,
+      workspaceName: workspaceName.trim(),
     });
 
     return res.status(201).json({
@@ -245,6 +282,16 @@ apiRouter.post('/auth/logout', async (req, res, next) => {
 
     await logoutUser(session.token);
     return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.post('/auth/reset-password', async (req, res, next) => {
+  try {
+    const { email, newPassword } = req.body;
+    const result = await resetPassword({ email, newPassword });
+    return res.json(result);
   } catch (error) {
     return next(error);
   }
@@ -550,7 +597,7 @@ apiRouter.patch('/tasks/:taskId/parent', async (req, res, next) => {
       return res.status(400).json({ message: 'projectId zorunludur.' });
     }
 
-    const updated = await updateTaskParent(req.params.taskId, projectId.trim(), parentTaskId || null);
+    const updated = await updateTaskParent(req.params.taskId, projectId.trim(), parentTaskId || null, session.user.id);
 
     if (!updated) {
       return res.status(404).json({ message: 'Gorev bulunamadı.' });
@@ -585,7 +632,7 @@ apiRouter.patch('/tasks/:taskId/status', async (req, res, next) => {
       return res.status(403).json({ message: 'Bu görevin durumunu sadece admin veya atanan kullanıcı değiştirebilir.' });
     }
 
-    const updated = await updateTaskStatus(req.params.taskId, status);
+    const updated = await updateTaskStatus(req.params.taskId, status, session.user.id);
 
     if (!updated) {
       return res.status(404).json({ message: 'Gorev bulunamadı.' });
@@ -627,13 +674,13 @@ apiRouter.patch('/users/:userId/role', async (req, res, next) => {
 
     const nextRole = role.trim();
     if (targetUser.role === 'Admin' && nextRole !== 'Admin') {
-      const adminCount = await getAdminCount();
+      const adminCount = await getAdminCount(session.user.id);
       if (adminCount <= 1) {
         return res.status(400).json({ message: 'Sistemdeki son adminin rolu degistirilemez.' });
       }
     }
 
-    const updated = await updateUserRole(userId, nextRole);
+    const updated = await updateUserRole(userId, nextRole, session.user.id);
 
     if (!updated) {
       return res.status(404).json({ message: 'Kullanici bulunamadı.' });
@@ -686,7 +733,7 @@ apiRouter.patch('/users/:userId/department', async (req, res, next) => {
 
     const nextDepartment = department.trim();
 
-    const updated = await updateUserDepartment(userId, nextDepartment);
+    const updated = await updateUserDepartment(userId, nextDepartment, session.user.id);
 
     if (!updated) {
       return res.status(404).json({ message: 'Kullanici bulunamadı.' });
@@ -699,6 +746,36 @@ apiRouter.patch('/users/:userId/department', async (req, res, next) => {
       oldValue: targetUser.department,
       newValue: nextDepartment,
     });
+
+    return res.json(await getBootstrapData(session.user));
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return next(error);
+  }
+});
+
+apiRouter.patch('/users/:userId/info', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+
+    if (!session) {
+      return;
+    }
+
+    if (!requireManagementPermission(session.permissions.canManageTeam, res)) {
+      return;
+    }
+
+    const { userId } = req.params;
+    const { name, email } = req.body;
+
+    if (userId === session.user.id) {
+      return res.status(400).json({ message: 'Kendi bilgilerinizi buradan değiştiremezsiniz.' });
+    }
+
+    await updateMemberInfo(userId, { name, email }, session.user.id);
 
     return res.json(await getBootstrapData(session.user));
   } catch (error) {
@@ -755,7 +832,7 @@ apiRouter.get('/admin/audit-logs', async (req, res, next) => {
     }
 
     const limit = Number(req.query.limit || 100);
-    const logs = await getUserAuditLogs(limit);
+    const logs = await getUserAuditLogs(limit, session.user.id);
     return res.json({ items: logs });
   } catch (error) {
     return next(error);
@@ -826,7 +903,7 @@ apiRouter.patch('/tasks/:taskId/comments/:commentId', async (req, res, next) => 
       return res.status(400).json({ message: 'Yorum icerigi zorunludur.' });
     }
 
-    const updated = await updateTaskComment(req.params.taskId, req.params.commentId, content.trim());
+    const updated = await updateTaskComment(req.params.taskId, req.params.commentId, content.trim(), session.user.id);
 
     if (!updated) {
       return res.status(404).json({ message: 'Yorum bulunamadı.' });
@@ -846,7 +923,7 @@ apiRouter.delete('/tasks/:taskId/comments/:commentId', async (req, res, next) =>
       return;
     }
 
-    const deleted = await deleteTaskComment(req.params.taskId, req.params.commentId);
+    const deleted = await deleteTaskComment(req.params.taskId, req.params.commentId, session.user.id);
 
     if (!deleted) {
       return res.status(404).json({ message: 'Yorum bulunamadı.' });
@@ -900,7 +977,7 @@ apiRouter.delete('/tasks/:taskId/assignees/:userId', async (req, res, next) => {
       return;
     }
 
-    const deleted = await removeTaskAssignee(req.params.taskId, req.params.userId);
+    const deleted = await removeTaskAssignee(req.params.taskId, req.params.userId, session.user.id);
 
     if (!deleted) {
       return res.status(404).json({ message: 'Gorev atamasi bulunamadı.' });
@@ -1063,6 +1140,34 @@ apiRouter.put('/settings', async (req, res, next) => {
 
     const bundle = await updateUserSettings(session.user.id, req.body);
     return res.json(bundle);
+  } catch (error) {
+    if (error instanceof Error) {
+      return res.status(400).json({ message: error.message });
+    }
+    return next(error);
+  }
+});
+
+apiRouter.patch('/settings/workspace', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    if (!requireManagementPermission(session.permissions.canManageTeam, res)) {
+      return;
+    }
+
+    const { name } = req.body;
+    if (!name?.trim()) {
+      return res.status(400).json({ message: 'Şirket adı zorunludur.' });
+    }
+
+    const updated = await updateWorkspaceName(session.user.id, name.trim());
+    if (!updated) {
+      return res.status(400).json({ message: 'Şirket güncellenemedi.' });
+    }
+
+    return res.json(await getBootstrapData(session.user));
   } catch (error) {
     if (error instanceof Error) {
       return res.status(400).json({ message: error.message });

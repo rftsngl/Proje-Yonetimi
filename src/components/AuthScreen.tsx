@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { FormEvent, useMemo, useState } from 'react';
 import { AppRole, LoginPayload, RegisterPayload } from '../types';
-import { Lock, Mail, User, UserPlus } from 'lucide-react';
+import { Lock, Mail, User, UserPlus, Briefcase, ArrowLeft, KeyRound, CheckCircle2 } from 'lucide-react';
 import { DEPARTMENTS } from '../lib/departments';
 import { motion, AnimatePresence } from 'motion/react';
+import { resetPassword } from '../services/auth';
 
 interface AuthScreenProps {
   onLogin: (payload: LoginPayload) => Promise<void>;
@@ -12,17 +13,21 @@ interface AuthScreenProps {
 }
 
 export default function AuthScreen({ onLogin, onRegister, error, isLoading }: AuthScreenProps) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [mode, setMode] = useState<'login' | 'register' | 'reset'>('login');
   const [loginForm, setLoginForm] = useState<LoginPayload>({ email: '', password: '' });
+  const [resetForm, setResetForm] = useState({ email: '', newPassword: '', confirmPassword: '' });
+  const [resetStatus, setResetStatus] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isResetting, setIsResetting] = useState(false);
   const [registerForm, setRegisterForm] = useState<RegisterPayload>({
     name: '',
     email: '',
     password: '',
     department: 'Yazılım',
+    workspaceName: '',
   });
 
   const title = useMemo(
-    () => (mode === 'login' ? 'Projene Güvenli Giriş Yap' : 'Ekibine Yeni Hesap Oluştur'),
+    () => mode === 'login' ? 'Projene Güvenli Giriş Yap' : mode === 'register' ? 'Ekibine Yeni Hesap Oluştur' : 'Şifreni Sıfırla',
     [mode],
   );
 
@@ -30,9 +35,37 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
     () =>
       mode === 'login'
         ? 'Rolüne göre görev, proje ve ekip görünümü otomatik olarak sana uyarlanır.'
-        : 'Kayıt olduktan sonra rol tabanlı görünüm ve yetkiler otomatik tanımlanır.',
+        : mode === 'register'
+          ? 'Kayıt olduktan sonra rol tabanlı görünüm ve yetkiler otomatik tanımlanır.'
+          : 'E-posta adresini gir ve yeni şifreni belirle.',
     [mode],
   );
+
+  const handleResetPassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setResetStatus(null);
+
+    if (resetForm.newPassword !== resetForm.confirmPassword) {
+      setResetStatus({ type: 'error', message: 'Şifreler eşleşmiyor.' });
+      return;
+    }
+
+    if (resetForm.newPassword.length < 6) {
+      setResetStatus({ type: 'error', message: 'Şifre en az 6 karakter olmalıdır.' });
+      return;
+    }
+
+    setIsResetting(true);
+    try {
+      const result = await resetPassword({ email: resetForm.email, newPassword: resetForm.newPassword });
+      setResetStatus({ type: 'success', message: result.message });
+      setResetForm({ email: '', newPassword: '', confirmPassword: '' });
+    } catch (err) {
+      setResetStatus({ type: 'error', message: err instanceof Error ? err.message : 'Şifre sıfırlanamadı.' });
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   // Animasyon varyasyonları
   const containerVariants = {
@@ -195,7 +228,7 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
               >
                 <div className="mb-8 flex items-center gap-2 rounded-2xl bg-slate-100 p-1.5 transition-all">
                   <button
-                    onClick={() => setMode('login')}
+                    onClick={() => { setMode('login'); setResetStatus(null); }}
                     className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition-all duration-300 ${
                       mode === 'login' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-700'
                     }`}
@@ -203,7 +236,7 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
                     Giriş Yap
                   </button>
                   <button
-                    onClick={() => setMode('register')}
+                    onClick={() => { setMode('register'); setResetStatus(null); }}
                     className={`flex-1 rounded-xl px-4 py-3 text-sm font-bold transition-all duration-300 ${
                       mode === 'register' ? 'bg-white text-indigo-600 shadow-md' : 'text-slate-500 hover:text-slate-700'
                     }`}
@@ -298,8 +331,18 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
                         <span className="relative z-10">Giriş Yap</span>
                         <Lock className="relative z-10 h-4 w-4 transition-transform group-hover:rotate-12" />
                       </button>
+
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => { setMode('reset'); setResetStatus(null); }}
+                          className="text-sm font-semibold text-indigo-600 transition-colors hover:text-indigo-700 hover:underline underline-offset-2"
+                        >
+                          Şifremi Unuttum
+                        </button>
+                      </div>
                     </motion.form>
-                  ) : (
+                  ) : mode === 'register' ? (
                     <motion.form
                       key="register"
                       initial={{ opacity: 0, y: 15 }}
@@ -359,6 +402,21 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
                       </div>
 
                       <label className="block space-y-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Şirket / Çalışma Alanı Adı</span>
+                        <div className="group relative">
+                          <Briefcase className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-indigo-600" />
+                          <input
+                            type="text"
+                            value={registerForm.workspaceName}
+                            onChange={(event) => setRegisterForm((current) => ({ ...current, workspaceName: event.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-12 py-3.5 text-sm font-medium text-slate-900 transition-all focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10"
+                            placeholder="Örn: Zodiac Bilişim"
+                            required
+                          />
+                        </div>
+                      </label>
+
+                      <label className="block space-y-2">
                         <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Departman Seçimi</span>
                         <select
                           value={registerForm.department || ''}
@@ -390,6 +448,105 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
                       >
                         <span className="relative z-10">Hesap Oluştur</span>
                         <UserPlus className="relative z-10 h-4 w-4 transition-transform group-hover:scale-110" />
+                      </button>
+                    </motion.form>
+                  ) : (
+                    /* RESET PASSWORD FORM */
+                    <motion.form
+                      key="reset"
+                      initial={{ opacity: 0, y: 15 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -15 }}
+                      className="space-y-5"
+                      onSubmit={handleResetPassword}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => { setMode('login'); setResetStatus(null); }}
+                        className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-500 transition-colors hover:text-indigo-600"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                        Giriş ekranına dön
+                      </button>
+
+                      <label className="block space-y-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600">E-posta Adresi</span>
+                        <div className="group relative">
+                          <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-indigo-600" />
+                          <input
+                            type="email"
+                            value={resetForm.email}
+                            onChange={(e) => setResetForm((c) => ({ ...c, email: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-12 py-3.5 text-sm font-medium text-slate-900 transition-all focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-400"
+                            placeholder="ornek@zodiac.com"
+                            required
+                          />
+                        </div>
+                      </label>
+
+                      <label className="block space-y-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Yeni Şifre</span>
+                        <div className="group relative">
+                          <KeyRound className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-indigo-600" />
+                          <input
+                            type="password"
+                            value={resetForm.newPassword}
+                            onChange={(e) => setResetForm((c) => ({ ...c, newPassword: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-12 py-3.5 text-sm font-medium text-slate-900 transition-all focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-400"
+                            placeholder="Min. 6 karakter"
+                            required
+                            minLength={6}
+                          />
+                        </div>
+                      </label>
+
+                      <label className="block space-y-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Yeni Şifre (Tekrar)</span>
+                        <div className="group relative">
+                          <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-indigo-600" />
+                          <input
+                            type="password"
+                            value={resetForm.confirmPassword}
+                            onChange={(e) => setResetForm((c) => ({ ...c, confirmPassword: e.target.value }))}
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50/50 px-12 py-3.5 text-sm font-medium text-slate-900 transition-all focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-4 focus:ring-indigo-500/10 placeholder:text-slate-400"
+                            placeholder="Şifrenizi tekrar girin"
+                            required
+                            minLength={6}
+                          />
+                        </div>
+                      </label>
+
+                      {resetStatus && (
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          className={`flex items-center gap-3 rounded-2xl border px-4 py-3.5 text-sm font-medium ${
+                            resetStatus.type === 'success'
+                              ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                              : 'border-rose-100 bg-rose-50 text-rose-600'
+                          }`}
+                        >
+                          {resetStatus.type === 'success' && <CheckCircle2 className="h-5 w-5 flex-shrink-0" />}
+                          {resetStatus.message}
+                        </motion.div>
+                      )}
+
+                      <button
+                        type="submit"
+                        disabled={isResetting}
+                        className="group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl bg-slate-900 px-6 py-4 text-sm font-bold text-white transition-all hover:bg-slate-800 hover:shadow-xl active:scale-[0.98] disabled:opacity-60 disabled:cursor-wait"
+                      >
+                        {isResetting ? (
+                          <>
+                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                            <span>Şifre Güncelleniyor...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="relative z-10">Şifreyi Sıfırla</span>
+                            <KeyRound className="relative z-10 h-4 w-4 transition-transform group-hover:rotate-12" />
+                          </>
+                        )}
                       </button>
                     </motion.form>
                   )}

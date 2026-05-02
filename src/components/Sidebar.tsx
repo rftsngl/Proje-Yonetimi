@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { User } from '../types';
 import { resolveAvatarUrl } from '../lib/avatar';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -56,7 +56,20 @@ export default function Sidebar({ isOpen, onClose, activeTab, onTabChange, curre
                 alt="Zodiac logo"
                 className="h-8 w-8 rounded-lg object-cover"
               />
-              <span className="text-xl font-bold tracking-tight text-gray-900">Zodiac</span>
+              <div className="flex-1 overflow-hidden" title={currentUser.workspaceName || 'Zodiac'}>
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={currentUser.workspaceName || 'Zodiac'}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className="block truncate text-lg font-bold tracking-tight text-gray-900"
+                  >
+                    {currentUser.workspaceName || 'Zodiac'}
+                  </motion.span>
+                </AnimatePresence>
+              </div>
             </button>
             <button onClick={onClose} className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 lg:hidden">
               <X className="h-5 w-5" />

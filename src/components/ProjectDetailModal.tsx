@@ -15,6 +15,7 @@ interface ProjectDetailModalProps {
   onViewAllTasks?: (project: Project) => void;
   onOpenWbs?: (project: Project) => void;
   onAddMember?: (project: Project, userId: string) => Promise<void>;
+  onGenerateReport?: (projectId: string) => void;
 }
 
 export default function ProjectDetailModal({
@@ -28,6 +29,7 @@ export default function ProjectDetailModal({
   onViewAllTasks,
   onOpenWbs,
   onAddMember,
+  onGenerateReport,
 }: ProjectDetailModalProps) {
   if (!project) {
     return null;
@@ -290,7 +292,10 @@ export default function ProjectDetailModal({
                   </div>
 
                   <div className="space-y-3 border-t border-slate-100 pt-10">
-                    <button className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-slate-50">
+                    <button 
+                      onClick={() => onGenerateReport?.(project.id)}
+                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-slate-50"
+                    >
                       <Briefcase className="h-4 w-4" />
                       Proje Raporu Al
                     </button>
