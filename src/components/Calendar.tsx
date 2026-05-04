@@ -101,6 +101,16 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
   const [isProjectFilterOpen, setIsProjectFilterOpen] = useState(false);
   const [filterBtnRect, setFilterBtnRect] = useState<DOMRect | null>(null);
   const filterBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Type visibility toggles
+  const [showEvents, setShowEvents] = useState(true);
+  const [showProjects, setShowProjects] = useState(true);
+  const [showTasks, setShowTasks] = useState(true);
+
+  // Day detail popover state
+  const [dayDetailDate, setDayDetailDate] = useState<string | null>(null);
+  const [dayDetailAnchor, setDayDetailAnchor] = useState<{ x: number; y: number } | null>(null);
+  const dayDetailRef = useRef<HTMLDivElement>(null);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const reminderDropdownRef = useRef<HTMLDivElement>(null);
@@ -121,6 +131,10 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
       }
       if (projectFilterRef.current && !projectFilterRef.current.contains(event.target as Node)) {
         setIsProjectFilterOpen(false);
+      }
+      if (dayDetailRef.current && !dayDetailRef.current.contains(event.target as Node)) {
+        setDayDetailDate(null);
+        setDayDetailAnchor(null);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -253,23 +267,54 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
   }, [events, projects, tasks]);
 
   const filteredItems = useMemo(() => {
-    if (!calendarProjectFilter) return unifiedItems;
     return unifiedItems.filter(item => {
-      if (item.type === 'event') return true; // User events always visible
-      if (item.type === 'project') return item.originalId === calendarProjectFilter;
-      if (item.type === 'task') {
-        const task = tasks.find(t => t.id === item.originalId);
-        return task?.projectId === calendarProjectFilter;
+      // Type visibility filter
+      if (item.type === 'event' && !showEvents) return false;
+      if (item.type === 'project' && !showProjects) return false;
+      if (item.type === 'task' && !showTasks) return false;
+
+      // Project filter
+      if (calendarProjectFilter) {
+        if (item.type === 'event') return true; // User events always visible
+        if (item.type === 'project') return item.originalId === calendarProjectFilter;
+        if (item.type === 'task') {
+          const task = tasks.find(t => t.id === item.originalId);
+          return task?.projectId === calendarProjectFilter;
+        }
       }
+
       return true;
     });
-  }, [unifiedItems, calendarProjectFilter, tasks]);
+  }, [unifiedItems, calendarProjectFilter, tasks, showEvents, showProjects, showTasks]);
 
   const getDateString = (day: number, m: number, y: number) => formatDateParts(y, m, day);
 
   const getItemsForDay = (day: number, m: number, y: number) => {
     const dateStr = getDateString(day, m, y);
     return filteredItems.filter((item) => isDateInRange(dateStr, item.date, item.endDate));
+  };
+
+  const getItemsForDateStr = useCallback((dateStr: string) => {
+    return filteredItems.filter((item) => isDateInRange(dateStr, item.date, item.endDate));
+  }, [filteredItems]);
+
+  const dayDetailItems = useMemo(() => {
+    if (!dayDetailDate) return [];
+    return getItemsForDateStr(dayDetailDate);
+  }, [dayDetailDate, getItemsForDateStr]);
+
+  const openCreateFromDay = (dateStr: string) => {
+    setDayDetailDate(null);
+    setDayDetailAnchor(null);
+    setEditingEvent(null);
+    setTitle('');
+    setEventType(EVENT_OPTIONS[0].value);
+    setSelectedDate(dateStr);
+    setEndDate('');
+    setReminderOffset(0);
+    const [y, m] = dateStr.split('-').map(Number);
+    setPickerViewDate(new Date(y, m - 1, 1));
+    setIsModalOpen(true);
   };
 
   const handleSubmit = async () => {
@@ -355,8 +400,8 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-[32px] border border-slate-100 bg-white shadow-2xl shadow-slate-200/50">
-        <div className="flex items-center justify-between border-b border-slate-50 bg-slate-50/30 p-8 backdrop-blur-md">
+      <div className="overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-lg shadow-slate-200/30">
+        <div className="flex items-center justify-between border-b border-slate-50 bg-slate-50/30 px-6 py-4">
           <div className="flex items-center gap-6">
             <AnimatePresence mode="wait" custom={direction}>
               <motion.h2
@@ -386,41 +431,80 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
-              <button
-                ref={filterBtnRef}
-                onClick={() => {
-                  if (filterBtnRef.current) {
-                    setFilterBtnRect(filterBtnRef.current.getBoundingClientRect());
-                  }
-                  setIsProjectFilterOpen(!isProjectFilterOpen);
-                }}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-bold transition-all active:scale-95 ${
-                  calendarProjectFilter
-                    ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
-                    : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
-                }`}
-              >
-                <Filter className="h-3.5 w-3.5" />
-                {calendarProjectFilter
-                  ? projects.find(p => p.id === calendarProjectFilter)?.name || 'Proje'
-                  : 'Tüm Projeler'}
-              </button>
+          <div className="flex items-center gap-2">
+            {/* Type toggle chips */}
+            <button
+              onClick={() => setShowEvents(!showEvents)}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition-all ${
+                showEvents ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-100' : 'bg-slate-50 text-slate-400 line-through'
+              }`}
+            >
+              <CalendarIcon className="h-3 w-3" />
+              Etkinlikler
+            </button>
+            <button
+              onClick={() => setShowProjects(!showProjects)}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition-all ${
+                showProjects ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100' : 'bg-slate-50 text-slate-400 line-through'
+              }`}
+            >
+              <Briefcase className="h-3 w-3" />
+              Projeler
+            </button>
+            <button
+              onClick={() => setShowTasks(!showTasks)}
+              className={`flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition-all ${
+                showTasks ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-slate-50 text-slate-400 line-through'
+              }`}
+            >
+              <CheckSquare className="h-3 w-3" />
+              Görevler
+            </button>
 
-            <div className="hidden items-center gap-3 sm:flex">
-               {EVENT_OPTIONS.map(opt => (
-                 <div key={opt.value} className="flex items-center gap-1.5">
-                   <div className={`h-2 w-2 rounded-full ${opt.color.split(' ')[0].replace('50', '500')}`} />
-                   <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">{opt.label}</span>
-                 </div>
-               ))}
-            </div>
+            <div className="mx-1 h-5 w-px bg-slate-200" />
+
+            {/* Project filter */}
+            <button
+              ref={filterBtnRef}
+              onClick={() => {
+                if (filterBtnRef.current) {
+                  setFilterBtnRect(filterBtnRef.current.getBoundingClientRect());
+                }
+                setIsProjectFilterOpen(!isProjectFilterOpen);
+              }}
+              className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-bold transition-all active:scale-95 ${
+                calendarProjectFilter
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
+                  : 'border-slate-200 bg-white text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <Filter className="h-3 w-3" />
+              {calendarProjectFilter
+                ? projects.find(p => p.id === calendarProjectFilter)?.name || 'Proje'
+                : 'Tüm Projeler'}
+            </button>
+
+            {/* Reset all filters */}
+            {(calendarProjectFilter || !showEvents || !showProjects || !showTasks) && (
+              <button
+                onClick={() => {
+                  setCalendarProjectFilter(null);
+                  setShowEvents(true);
+                  setShowProjects(true);
+                  setShowTasks(true);
+                }}
+                className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-bold text-rose-500 transition-all hover:bg-rose-50"
+              >
+                <X className="h-3 w-3" />
+                Temizle
+              </button>
+            )}
           </div>
         </div>
 
         <div className="grid grid-cols-7 bg-slate-50/50">
           {DAYS_OF_WEEK.map((day) => (
-            <div key={day} className="py-4 text-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+            <div key={day} className="py-2.5 text-center text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
               {day}
             </div>
           ))}
@@ -441,45 +525,46 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
                 const dayItems = getItemsForDay(dateObj.day, dateObj.month, dateObj.year);
                 const today = isToday(dateObj.day, dateObj.month, dateObj.year);
                 const cellDate = getDateString(dateObj.day, dateObj.month, dateObj.year);
+                const maxVisible = 3;
+                const visibleItems = dayItems.slice(0, maxVisible);
+                const overflowCount = dayItems.length - maxVisible;
 
                 return (
                   <div
                     key={`${cellDate}-${index}`}
-                    className={`group relative min-h-[100px] border-b border-r border-slate-50 p-2.5 transition-colors ${
-                      !dateObj.isCurrentMonth ? 'bg-slate-50/20 opacity-40' : 'hover:bg-indigo-50/20'
+                    className={`group relative h-[110px] border-b border-r border-slate-50 p-1.5 transition-colors ${
+                      !dateObj.isCurrentMonth ? 'bg-slate-50/20 opacity-40' : 'hover:bg-indigo-50/20 cursor-pointer'
                     } ${today ? 'bg-indigo-50/40 ring-1 ring-inset ring-indigo-100' : ''}`}
-                    onClick={() => { 
-                      if(dateObj.isCurrentMonth) { 
-                        setEditingEvent(null);
-                        setTitle('');
-                        setEventType(EVENT_OPTIONS[0].value);
-                        setSelectedDate(cellDate); 
-                        setPickerViewDate(new Date(dateObj.year, dateObj.month, 1));
-                        setIsModalOpen(true); 
+                    onClick={(e) => { 
+                      if(dateObj.isCurrentMonth) {
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                        setDayDetailDate(cellDate);
+                        setDayDetailAnchor({ 
+                          x: Math.min(rect.left + rect.width / 2, window.innerWidth - 200),
+                          y: Math.min(rect.bottom + 4, window.innerHeight - 300)
+                        });
                       } 
                     }}
                   >
-                    <div className="mb-2 flex items-center justify-between">
+                    <div className="mb-1 flex items-center justify-between px-0.5">
                       <span
-                        className={`text-sm font-black leading-none ${
-                          !dateObj.isCurrentMonth ? 'text-slate-300' : today ? 'text-indigo-600' : 'text-slate-800'
+                        className={`text-xs font-bold leading-none ${
+                          !dateObj.isCurrentMonth ? 'text-slate-300' : today ? 'text-indigo-600' : 'text-slate-700'
                         }`}
                       >
                         {dateObj.day}
                       </span>
                       {today && (
-                        <div className="rounded-full bg-indigo-600 px-1.5 py-0.5 text-[7px] font-bold text-white uppercase tracking-tighter shadow-sm">
+                        <div className="rounded-full bg-indigo-600 px-1 py-px text-[6px] font-bold text-white uppercase tracking-tight">
                           Bugün
                         </div>
                       )}
                     </div>
 
-                    <div className="space-y-1.5">
-                      {dayItems.map((item) => (
-                        <motion.div
+                    <div className="space-y-0.5 overflow-hidden">
+                      {visibleItems.map((item) => (
+                        <div
                           key={item.id}
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (item.type === 'event') {
@@ -493,30 +578,31 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
                               setIsModalOpen(true);
                             }
                           }}
-                          className={`flex cursor-pointer items-center gap-1.5 rounded-xl border border-transparent px-2.5 py-1.5 text-[10px] font-bold shadow-sm transition-all hover:border-current/20 hover:shadow-md ${item.color} ${item.type !== 'event' ? 'opacity-85' : ''}`}
+                          className={`flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-0.5 text-[9px] font-semibold leading-tight transition-all hover:opacity-80 ${item.color} ${item.type !== 'event' ? 'opacity-80' : ''}`}
                         >
-                          {item.type === 'project' ? <Briefcase className="h-3 w-3 shrink-0" /> : 
-                           item.type === 'task' ? <CheckSquare className="h-3 w-3 shrink-0" /> :
+                          {item.type === 'project' ? <Briefcase className="h-2.5 w-2.5 shrink-0" /> : 
+                           item.type === 'task' ? <CheckSquare className="h-2.5 w-2.5 shrink-0" /> :
                            <div className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.color.split(' ')[0].replace('50', '500')}`} />}
-                          <span className="min-w-0 flex-1 truncate">
-                            {item.endDate && normalizeDate(item.date) === cellDate && <span className="mr-1 opacity-70">(Başl.)</span>}
-                            {item.endDate && normalizeDate(item.endDate) === cellDate && <span className="mr-1 opacity-70">(Bit.)</span>}
-                            {item.title}
-                          </span>
+                          <span className="min-w-0 flex-1 truncate">{item.title}</span>
                           {item.type === 'event' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); handleDeleteEvent(item.id, item.title); }}
-                              className="ml-1 rounded-md p-0.5 opacity-0 transition-all hover:bg-white/50 group-hover:opacity-100"
+                              className="ml-0.5 rounded p-0.5 opacity-0 transition-all hover:bg-white/50 group-hover:opacity-100"
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash2 className="h-2.5 w-2.5" />
                             </button>
                           )}
-                        </motion.div>
+                        </div>
                       ))}
+                      {overflowCount > 0 && (
+                        <div className="px-1.5 text-[8px] font-bold text-indigo-500">
+                          +{overflowCount} daha
+                        </div>
+                      )}
                       {dateObj.isCurrentMonth && dayItems.length === 0 && (
-                        <div className="flex h-12 items-center justify-center opacity-0 group-hover:opacity-100">
-                           <div className="rounded-full bg-white p-2 text-indigo-600 shadow-md ring-1 ring-slate-100">
-                             <Plus className="h-4 w-4" />
+                        <div className="flex h-10 items-center justify-center opacity-0 group-hover:opacity-100">
+                           <div className="rounded-full bg-white p-1.5 text-indigo-500 shadow ring-1 ring-slate-100">
+                             <Plus className="h-3 w-3" />
                            </div>
                         </div>
                       )}
@@ -528,6 +614,87 @@ export default function Calendar({ events, projects, tasks, onCreateEvent, onUpd
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Day Detail Popover */}
+      <AnimatePresence>
+        {dayDetailDate && dayDetailAnchor && (
+          <motion.div
+            ref={dayDetailRef}
+            initial={{ opacity: 0, scale: 0.95, y: -5 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -5 }}
+            transition={{ duration: 0.15 }}
+            style={{ position: 'fixed', left: dayDetailAnchor.x - 140, top: dayDetailAnchor.y, zIndex: 200 }}
+            className="w-[280px] rounded-2xl border border-slate-100 bg-white p-4 shadow-2xl shadow-slate-200/50"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-900">
+                  {(() => {
+                    const [y, m, d] = dayDetailDate.split('-').map(Number);
+                    return `${d} ${MONTHS[m - 1]} ${y}`;
+                  })()}
+                </p>
+                <p className="text-[10px] text-slate-400">{dayDetailItems.length} etkinlik</p>
+              </div>
+              <button
+                onClick={() => { setDayDetailDate(null); setDayDetailAnchor(null); }}
+                className="rounded-lg p-1 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[200px] space-y-1 overflow-y-auto custom-scrollbar">
+              {dayDetailItems.length === 0 ? (
+                <p className="py-4 text-center text-xs text-slate-400">Bu günde etkinlik yok.</p>
+              ) : (
+                dayDetailItems.map((item) => (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      if (item.type === 'event') {
+                        setDayDetailDate(null);
+                        setDayDetailAnchor(null);
+                        setEditingEvent(item);
+                        setTitle(item.title);
+                        setEventType(item.eventType || EVENT_OPTIONS[0].value);
+                        setSelectedDate(normalizeDate(item.date));
+                        setEndDate(item.endDate ? normalizeDate(item.endDate) : '');
+                        setReminderOffset(item.reminderOffset || 0);
+                        setPickerViewDate(new Date(normalizeDate(item.date)));
+                        setIsModalOpen(true);
+                      }
+                    }}
+                    className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all ${item.type === 'event' ? 'cursor-pointer hover:shadow-sm' : ''} ${item.color}`}
+                  >
+                    {item.type === 'project' ? <Briefcase className="h-3.5 w-3.5 shrink-0" /> : 
+                     item.type === 'task' ? <CheckSquare className="h-3.5 w-3.5 shrink-0" /> :
+                     <div className={`h-2 w-2 shrink-0 rounded-full ${item.color.split(' ')[0].replace('50', '500')}`} />}
+                    <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                    {item.type === 'event' && onDeleteEvent && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteEvent(item.id, item.title); }}
+                        className="rounded-md p-1 text-current opacity-40 transition-all hover:bg-white/50 hover:opacity-100"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <button
+              onClick={() => openCreateFromDay(dayDetailDate)}
+              className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl bg-indigo-50 py-2 text-xs font-bold text-indigo-600 transition-all hover:bg-indigo-100"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Etkinlik Ekle
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isModalOpen && (

@@ -291,6 +291,7 @@ export interface CreateProjectPayload {
   requirements?: CreateProjectRequirementPayload[];
   risks?: CreateProjectRiskPayload[];
   costItems?: CreateProjectCostItemPayload[];
+  communicationPlans?: CreateProjectCommunicationPlanPayload[];
   testItems?: CreateProjectTestItemPayload[];
 
   // WBS

@@ -1223,7 +1223,8 @@ export default function App() {
   };
 
   return (
-    <Layout
+    <>
+      <Layout
       activeTab={activeTab}
       onTabChange={handleTabChange}
       notifications={activeNotifications}
@@ -1234,6 +1235,7 @@ export default function App() {
       currentUser={data.currentUser}
       visibleTabs={visibleTabs}
       onLogout={handleLogout}
+      onNavigateToNotifications={() => handleTabChange('notifications')}
     >
       <AnimatePresence mode="wait">
         <motion.div
@@ -1345,15 +1347,16 @@ export default function App() {
         error={reportError}
         title={reportTitle}
       />
+      </Layout>
 
       {/* Global Toast Notification */}
       <AnimatePresence>
         {activeToast && (
           <motion.div
             key={activeToast.id}
-            initial={{ opacity: 0, y: -20, x: 20 }}
-            animate={{ opacity: 1, y: 0, x: 0 }}
-            exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.2 } }}
             className="fixed top-6 right-6 z-[9999] flex min-w-[300px] items-center gap-4 rounded-2xl border border-indigo-100 bg-white p-4 shadow-2xl shadow-indigo-100/50"
           >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50">
@@ -1372,6 +1375,6 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
-    </Layout>
+    </>
   );
-}
+};

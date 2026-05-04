@@ -220,101 +220,81 @@ export default function Team({
       </div>
 
       <motion.div 
-        className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
+        className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
         initial="hidden" animate="visible"
-        variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
+        variants={{ visible: { transition: { staggerChildren: 0.04 } } }}
       >
         {filteredMembers.map((member) => (
           <motion.div
             key={member.id}
-            variants={{ hidden: { opacity: 0, y: 15 }, visible: { opacity: 1, y: 0 } }}
-            className="group relative rounded-2xl border border-slate-100 bg-white p-6 shadow-sm transition-all hover:shadow-md"
+            variants={{ hidden: { opacity: 0, y: 10 }, visible: { opacity: 1, y: 0 } }}
+            className="group relative flex flex-col rounded-2xl border border-slate-100 bg-white p-4 shadow-sm transition-all hover:border-indigo-100 hover:shadow-md"
           >
-            <div className="absolute right-4 top-4 flex items-center gap-1.5">
+            {/* Status dot */}
+            <div className="absolute right-3 top-3 flex items-center gap-1">
               <div
-                className={`h-2.5 w-2.5 rounded-full ${
+                className={`h-2 w-2 rounded-full ${
                   member.status === 'Online' ? 'bg-emerald-500' : member.status === 'Busy' ? 'bg-amber-500' : 'bg-slate-300'
                 }`}
               />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{member.status}</span>
+              <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{member.status}</span>
             </div>
 
-            <div className="flex items-start gap-4">
+            {/* Avatar + Name */}
+            <div className="flex items-center gap-3">
               <img
-                src={resolveAvatarUrl(member.avatar, 80)}
+                src={resolveAvatarUrl(member.avatar, 48)}
                 alt={member.name}
-                className="h-16 w-16 rounded-2xl border-2 border-slate-50 object-cover shadow-sm"
+                className="h-10 w-10 rounded-xl border border-slate-100 object-cover"
                 referrerPolicy="no-referrer"
               />
               <div className="min-w-0 flex-1">
-                <h3 className="truncate font-bold text-slate-900 transition-colors group-hover:text-indigo-600">{member.name}</h3>
-                <p className="truncate text-sm text-slate-500">{member.role}</p>
-                <div className="mt-1 inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-600">
-                  {member.department}
-                </div>
+                <h3 className="truncate text-sm font-bold text-slate-900 transition-colors group-hover:text-indigo-600">{member.name}</h3>
+                <p className="truncate text-xs text-slate-500">{member.role}</p>
               </div>
             </div>
 
-            {canManageRoles && onUpdateMemberRole && onUpdateMemberDepartment && (
-              <div className="mt-4 space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Rol Atama</p>
-                <CustomDropdown
-                  options={ROLE_OPTIONS}
-                  value={member.role}
-                  disabled={member.id === currentUserId || updatingUserRoleId === member.id}
-                  onChange={(nextRole) => {
-                    if (nextRole !== member.role) {
-                      void onUpdateMemberRole(member.id, nextRole as AppRole);
-                    }
-                  }}
-                  className="w-full"
-                />
-
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Departman</p>
-                <CustomDropdown
-                  options={DEPARTMENTS}
-                  value={member.department}
-                  disabled={member.id === currentUserId || updatingUserDepartmentId === member.id}
-                  onChange={(nextDepartment) => {
-                    if (nextDepartment !== member.department) {
-                      void onUpdateMemberDepartment(member.id, nextDepartment);
-                    }
-                  }}
-                  className="w-full"
-                />
-                {member.id === currentUserId && (
-                  <p className="text-[11px] text-slate-500">Kendi rol ve departmanınızı buradan değiştiremezsiniz.</p>
-                )}
-              </div>
-            )}
-
-            <div className="mt-6 grid grid-cols-2 gap-4 border-y border-slate-50 py-4">
-              <div className="text-center">
-                <p className="text-xl font-bold text-slate-900">{member.projectsCount}</p>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Proje</p>
-              </div>
-              <div className="border-l border-slate-50 text-center">
-                <p className="text-xl font-bold text-slate-900">{member.tasksCount}</p>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Görev</p>
+            {/* Department + Stats Row */}
+            <div className="mt-3 flex items-center justify-between">
+              <span className="inline-flex items-center rounded-md bg-slate-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-500 ring-1 ring-inset ring-slate-100">
+                {member.department}
+              </span>
+              <div className="flex items-center gap-3 text-[11px] text-slate-400">
+                <span className="flex items-center gap-1" title="Proje">
+                  <Briefcase className="h-3 w-3" />
+                  <span className="font-bold text-slate-600">{member.projectsCount}</span>
+                </span>
+                <span className="flex items-center gap-1" title="Görev">
+                  <CheckCircle className="h-3 w-3" />
+                  <span className="font-bold text-slate-600">{member.tasksCount}</span>
+                </span>
               </div>
             </div>
 
-            <div className="mt-6 flex items-center gap-2">
+            {/* Actions */}
+            <div className="mt-3 flex items-center gap-2 border-t border-slate-50 pt-3">
               <a
                 href={`mailto:${member.email}`}
-                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-indigo-50 py-2.5 text-sm font-bold text-indigo-600 transition-all hover:bg-indigo-100"
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-indigo-50 py-1.5 text-xs font-bold text-indigo-600 transition-all hover:bg-indigo-100"
               >
-                <Mail className="h-4 w-4" />
-                Mesaj Gönder
+                <Mail className="h-3.5 w-3.5" />
+                E-posta
               </a>
+              <button
+                onClick={() => setSelectedMemberForProfile(member)}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-slate-50 py-1.5 text-xs font-bold text-slate-600 transition-all hover:bg-slate-100"
+              >
+                <User className="h-3.5 w-3.5" />
+                Profil
+              </button>
               <div className="relative">
                 <button
                   onClick={() => setActiveMenuId(activeMenuId === member.id ? null : member.id)}
-                  className={`rounded-xl p-2.5 transition-all ${
-                    activeMenuId === member.id ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+                  className={`rounded-lg p-1.5 transition-all ${
+                    activeMenuId === member.id ? 'bg-indigo-600 text-white' : 'bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600'
                   }`}
                 >
-                  <MoreVertical className="h-5 w-5" />
+                  <MoreVertical className="h-4 w-4" />
                 </button>
 
                 <AnimatePresence>
@@ -407,6 +387,10 @@ export default function Team({
             isAdmin={!!canManageRoles}
             onUpdateMemberInfo={onUpdateMemberInfo}
             currentUserId={currentUserId}
+            onUpdateMemberRole={onUpdateMemberRole}
+            onUpdateMemberDepartment={onUpdateMemberDepartment}
+            updatingUserRoleId={updatingUserRoleId}
+            updatingUserDepartmentId={updatingUserDepartmentId}
           />
         )}
       </AnimatePresence>
@@ -732,9 +716,13 @@ interface MemberProfileModalProps {
   isAdmin?: boolean;
   onUpdateMemberInfo?: (userId: string, payload: { name?: string; email?: string }) => Promise<void>;
   currentUserId?: string;
+  onUpdateMemberRole?: (userId: string, role: AppRole) => Promise<void>;
+  onUpdateMemberDepartment?: (userId: string, department: string) => Promise<void>;
+  updatingUserRoleId?: string | null;
+  updatingUserDepartmentId?: string | null;
 }
 
-function MemberProfileModal({ member, auditLogs, onClose, isAdmin, onUpdateMemberInfo, currentUserId }: MemberProfileModalProps) {
+function MemberProfileModal({ member, auditLogs, onClose, isAdmin, onUpdateMemberInfo, currentUserId, onUpdateMemberRole, onUpdateMemberDepartment, updatingUserRoleId, updatingUserDepartmentId }: MemberProfileModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(member.name);
   const [editEmail, setEditEmail] = useState(member.email || '');
@@ -829,6 +817,43 @@ function MemberProfileModal({ member, auditLogs, onClose, isAdmin, onUpdateMembe
               <span>{member.department}</span>
             </div>
           </div>
+
+          {/* Role & Department Management */}
+          {isAdmin && onUpdateMemberRole && onUpdateMemberDepartment && (
+            <div className="mt-8 grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Rol</p>
+                <CustomDropdown
+                  options={ROLE_OPTIONS}
+                  value={member.role}
+                  disabled={member.id === currentUserId || updatingUserRoleId === member.id}
+                  onChange={(nextRole) => {
+                    if (nextRole !== member.role) {
+                      void onUpdateMemberRole(member.id, nextRole as AppRole);
+                    }
+                  }}
+                  className="w-full"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Departman</p>
+                <CustomDropdown
+                  options={DEPARTMENTS}
+                  value={member.department}
+                  disabled={member.id === currentUserId || updatingUserDepartmentId === member.id}
+                  onChange={(nextDepartment) => {
+                    if (nextDepartment !== member.department) {
+                      void onUpdateMemberDepartment(member.id, nextDepartment);
+                    }
+                  }}
+                  className="w-full"
+                />
+              </div>
+              {member.id === currentUserId && (
+                <p className="col-span-2 text-[11px] text-slate-500">Kendi rol ve departmanınızı buradan değiştiremezsiniz.</p>
+              )}
+            </div>
+          )}
 
           {/* Quick Stats Grid */}
           <div className="mt-10 grid grid-cols-2 gap-4">

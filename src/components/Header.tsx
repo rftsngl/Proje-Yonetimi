@@ -15,6 +15,7 @@ interface HeaderProps {
   onToggleNotificationRead?: (id: string, read: boolean) => void;
   currentUser: User;
   onLogout?: () => Promise<void> | void;
+  onNavigateToNotifications?: () => void;
 }
 
 export default function Header({ 
@@ -25,7 +26,8 @@ export default function Header({
   onDeleteAllNotifications,
   onToggleNotificationRead,
   currentUser, 
-  onLogout 
+  onLogout,
+  onNavigateToNotifications
 }: HeaderProps) {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -114,6 +116,7 @@ export default function Header({
               onDelete={onDeleteNotification}
               onDeleteAll={onDeleteAllNotifications}
               onToggleRead={onToggleNotificationRead}
+              onViewAll={onNavigateToNotifications}
             />
           </div>
 

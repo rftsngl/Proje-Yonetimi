@@ -16,6 +16,7 @@ interface LayoutProps {
   currentUser: User;
   visibleTabs: { id: string; label: string }[];
   onLogout?: () => Promise<void> | void;
+  onNavigateToNotifications?: () => void;
 }
 
 export default function Layout({
@@ -30,6 +31,7 @@ export default function Layout({
   currentUser,
   visibleTabs,
   onLogout,
+  onNavigateToNotifications,
 }: LayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -56,6 +58,7 @@ export default function Layout({
           onToggleNotificationRead={onToggleNotificationRead}
           currentUser={currentUser}
           onLogout={onLogout}
+          onNavigateToNotifications={onNavigateToNotifications}
         />
         
         <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5 lg:p-6">

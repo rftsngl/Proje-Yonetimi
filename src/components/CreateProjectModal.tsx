@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Calendar, Target, User, Briefcase, AlignLeft, LayoutGrid, Palette, ChevronRight, ChevronLeft, CheckCircle2, ShieldAlert, Users, Layers, Activity, ChevronDown } from 'lucide-react';
+import { X, Calendar, Target, User, Briefcase, AlignLeft, LayoutGrid, Palette, ChevronRight, ChevronLeft, CheckCircle2, ShieldAlert, Users, Layers, Activity, ChevronDown, Sparkles, Send, Bot, Wand2, Info, MessageCircle, DollarSign, Trash2, Plus } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
-import { CreateProjectPayload, Project, User as AppUser, CreateProjectStakeholderPayload, CreateProjectRequirementPayload, CreateProjectRiskPayload } from '../types';
+import { CreateProjectPayload, Project, User as AppUser, CreateProjectStakeholderPayload, CreateProjectRequirementPayload, CreateProjectRiskPayload, CreateProjectCommunicationPlanPayload, CreateProjectCostItemPayload } from '../types';
 import { resolveAvatarUrl } from '../lib/avatar';
+import { generateProject } from '../services/ai';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -21,10 +22,12 @@ const STEPS = [
   { id: 2, title: 'Değer ve Uygunluk', icon: Target },
   { id: 3, title: 'Kapsam', icon: LayoutGrid },
   { id: 4, title: 'Paydaşlar', icon: Users },
-  { id: 5, title: 'Gereksinimler', icon: AlignLeft },
-  { id: 6, title: 'Riskler', icon: ShieldAlert },
-  { id: 7, title: 'WBS & Plan', icon: Layers },
-  { id: 8, title: 'Özet', icon: CheckCircle2 },
+  { id: 5, title: 'İletişim Planı', icon: MessageCircle },
+  { id: 6, title: 'Gereksinimler', icon: AlignLeft },
+  { id: 7, title: 'Riskler', icon: ShieldAlert },
+  { id: 8, title: 'Bütçe', icon: DollarSign },
+  { id: 9, title: 'WBS & Plan', icon: Layers },
+  { id: 10, title: 'Özet', icon: CheckCircle2 },
 ];
 
 export default function CreateProjectModal({ isOpen, onClose, onCreate, managers, initialProject, submitLabel }: CreateProjectModalProps) {
@@ -41,6 +44,8 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
   const [newStakeholder, setNewStakeholder] = useState<CreateProjectStakeholderPayload>({ name: '', role: '', interest: 'Orta', power: 'Orta', expectation: '', communicationMethod: '' });
   const [newRequirement, setNewRequirement] = useState<CreateProjectRequirementPayload>({ title: '', description: '', type: 'İşlevsel', priority: 'Must', difficulty: 3, businessValue: 3 });
   const [newRisk, setNewRisk] = useState<CreateProjectRiskPayload>({ title: '', category: 'Teknik', probability: 3, impact: 3, mitigation: '' });
+  const [newCommunicationPlan, setNewCommunicationPlan] = useState<CreateProjectCommunicationPlanPayload>({ meetingType: '', frequency: 'Haftalık', channel: 'Teams', participants: '' });
+  const [newCostItem, setNewCostItem] = useState<CreateProjectCostItemPayload>({ title: '', category: 'Yazılım Lisansı', estimatedCost: 0, currency: 'USD' });
 
   // Custom Date Picker & Dropdown State
   const [datePickerConfig, setDatePickerConfig] = useState<{ field: 'startDate' | 'endDate' | null; viewDate: Date; rect: DOMRect | null }>({ field: null, viewDate: new Date(), rect: null });
@@ -48,6 +53,12 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
     type: 'category' | 'manager' | 'interest' | 'power' | 'reqType' | 'reqPriority' | 'riskCategory' | 'wbsTemplate' | null; 
     rect: DOMRect | null 
   }>({ type: null, rect: null });
+
+  // AI State
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [aiSuccess, setAiSuccess] = useState(false);
+  const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
 
   const triggerRefs = {
     category: useRef<HTMLButtonElement>(null),
@@ -96,6 +107,20 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
   };
   const removeRisk = (index: number) => updateForm({ risks: form.risks?.filter((_, i) => i !== index) });
 
+  const addCommunicationPlan = () => {
+    if (!newCommunicationPlan.meetingType) return;
+    updateForm({ communicationPlans: [...(form.communicationPlans || []), newCommunicationPlan] });
+    setNewCommunicationPlan({ meetingType: '', frequency: 'Haftalık', channel: 'Teams', participants: '' });
+  };
+  const removeCommunicationPlan = (index: number) => updateForm({ communicationPlans: form.communicationPlans?.filter((_, i) => i !== index) });
+
+  const addCostItem = () => {
+    if (newCostItem.estimatedCost <= 0 || !newCostItem.title) return;
+    updateForm({ costItems: [...(form.costItems || []), newCostItem] });
+    setNewCostItem({ title: '', category: 'Yazılım Lisansı', estimatedCost: 0, currency: 'USD' });
+  };
+  const removeCostItem = (index: number) => updateForm({ costItems: form.costItems?.filter((_, i) => i !== index) });
+
   useEffect(() => {
     if (isOpen) {
       setCurrentStep(1);
@@ -108,7 +133,7 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
           endDate: initialProject.endDate?.slice(0, 10) || '', themeColor: initialProject.themeColor || colors[0],
         });
       } else {
-        setForm({ name: '', description: '', category: 'Web Geliştirme', managerId: managers[0]?.id || '', startDate: '', endDate: '', themeColor: colors[0], stakeholders: [], requirements: [], risks: [], createDefaultWbsTasks: false, selectedWbsTemplate: 'empty' });
+        setForm({ name: '', description: '', category: 'Web Geliştirme', managerId: managers[0]?.id || '', startDate: '', endDate: '', themeColor: colors[0], stakeholders: [], requirements: [], risks: [], communicationPlans: [], costItems: [], createDefaultWbsTasks: false, selectedWbsTemplate: 'empty' });
       }
       setError(null);
       setIsSubmitting(false);
@@ -261,102 +286,115 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
             initial={{ opacity: 0, scale: 0.95, y: 20 }} 
             animate={{ opacity: 1, scale: 1, y: 0 }} 
             exit={{ opacity: 0, scale: 0.95, y: 20 }} 
-            className="relative flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-[40px] bg-white shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)]"
+            className="relative flex h-[90vh] w-full max-w-[1200px] overflow-hidden rounded-[40px] bg-white shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)]"
           >
-            {/* Header & Progress */}
-            <div className="relative border-b border-slate-100 bg-white px-10 pt-8 pb-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-100`}>
-                    <Briefcase className="h-6 w-6" />
+            {/* Left Column: Traditional Wizard */}
+            <div className="flex flex-1 flex-col border-r border-slate-100 overflow-hidden">
+              {/* Header & Progress */}
+              <div className="relative border-b border-slate-100 bg-white px-8 pt-8 pb-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-lg shadow-indigo-100`}>
+                      <Briefcase className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-xl font-bold text-slate-900">{initialProject ? 'Projeyi Düzenle' : 'Proje Planlama Sihirbazı'}</h2>
+                      <AnimatePresence mode="wait">
+                        <motion.p 
+                          key={currentStep}
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -5 }}
+                          className="text-[12px] font-medium text-slate-500"
+                        >
+                          Adım {currentStep} / {initialProject ? 1 : STEPS.length}: {STEPS[currentStep-1].title}
+                        </motion.p>
+                      </AnimatePresence>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="text-2xl font-bold text-slate-900">{initialProject ? 'Projeyi Düzenle' : 'Proje Planlama Sihirbazı'}</h2>
-                    <AnimatePresence mode="wait">
-                      <motion.p 
-                        key={currentStep}
-                        initial={{ opacity: 0, y: 5 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -5 }}
-                        className="text-sm font-medium text-slate-500"
+                  <div className="flex items-center gap-3">
+                    {!initialProject && (
+                      <button 
+                        onClick={() => setIsAiPanelOpen(true)}
+                        className="group flex items-center gap-2 rounded-2xl bg-indigo-50 px-4 py-2 text-indigo-600 transition-all hover:bg-indigo-100 font-semibold text-sm border border-indigo-100/50"
                       >
-                        Adım {currentStep} / {initialProject ? 1 : STEPS.length}: {STEPS[currentStep-1].title}
-                      </motion.p>
-                    </AnimatePresence>
+                        <Sparkles className="h-4 w-4" />
+                        AI ile Oluştur
+                      </button>
+                    )}
+                    <button 
+                      onClick={onClose} 
+                      className="group flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-all hover:bg-rose-50 hover:text-rose-600"
+                    >
+                      <X className="h-5 w-5 transition-transform group-hover:rotate-90" />
+                    </button>
                   </div>
                 </div>
-                <button 
-                  onClick={onClose} 
-                  className="group flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-all hover:bg-rose-50 hover:text-rose-600"
-                >
-                  <X className="h-5 w-5 transition-transform group-hover:rotate-90" />
-                </button>
+
+                {!initialProject && (
+                  <div className="mt-8 flex items-center justify-between relative px-2">
+                    <div className="absolute top-5 left-10 right-10 h-0.5 bg-slate-100 -z-10" />
+                    <div 
+                      className="absolute top-5 left-10 h-0.5 bg-indigo-600 transition-all duration-500 -z-10" 
+                      style={{ width: `${((currentStep - 1) / (STEPS.length - 1)) * 80}%`, marginLeft: '2.5%' }} 
+                    />
+                    {STEPS.map((step) => {
+                      const Icon = step.icon;
+                      const isActive = currentStep === step.id;
+                      const isPassed = currentStep > step.id;
+                      return (
+                        <button 
+                          key={step.id} 
+                          onClick={() => {
+                            if (isPassed) {
+                              setDirection(step.id < currentStep ? -1 : 1);
+                              setCurrentStep(step.id);
+                            }
+                          }}
+                          className={`group relative flex flex-col items-center gap-2 ${isPassed ? 'cursor-pointer' : 'cursor-default'}`}
+                        >
+                          <div className={`flex h-9 w-9 items-center justify-center rounded-2xl border-2 transition-all duration-300 ${
+                            isActive 
+                              ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-110' 
+                              : isPassed 
+                                ? 'border-indigo-600 bg-white text-indigo-600' 
+                                : 'border-slate-200 bg-white text-slate-400'
+                          }`}>
+                            <Icon className="h-4 w-4" />
+                            {isPassed && !isActive && (
+                              <div className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-indigo-600 text-[8px] text-white">
+                                <CheckCircle2 className="h-2.5 w-2.5" />
+                              </div>
+                            )}
+                          </div>
+                          <span className={`absolute -bottom-6 whitespace-nowrap text-[9px] font-bold uppercase tracking-wider transition-colors ${
+                            isActive ? 'text-indigo-600' : 'text-slate-400'
+                          }`}>
+                            {step.title}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              {!initialProject && (
-                <div className="mt-8 flex items-center justify-between relative px-2">
-                  <div className="absolute top-5 left-10 right-10 h-0.5 bg-slate-100 -z-10" />
-                  <div 
-                    className="absolute top-5 left-10 h-0.5 bg-indigo-600 transition-all duration-500 -z-10" 
-                    style={{ width: `${((currentStep - 1) / (STEPS.length - 1)) * 80}%`, marginLeft: '2.5%' }} 
-                  />
-                  {STEPS.map((step) => {
-                    const Icon = step.icon;
-                    const isActive = currentStep === step.id;
-                    const isPassed = currentStep > step.id;
-                    return (
-                      <button 
-                        key={step.id} 
-                        onClick={() => {
-                          if (isPassed) {
-                            setDirection(step.id < currentStep ? -1 : 1);
-                            setCurrentStep(step.id);
-                          }
-                        }}
-                        className={`group relative flex flex-col items-center gap-2 ${isPassed ? 'cursor-pointer' : 'cursor-default'}`}
-                      >
-                        <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border-2 transition-all duration-300 ${
-                          isActive 
-                            ? 'border-indigo-600 bg-indigo-600 text-white shadow-lg shadow-indigo-100 scale-110' 
-                            : isPassed 
-                              ? 'border-indigo-600 bg-white text-indigo-600' 
-                              : 'border-slate-200 bg-white text-slate-400'
-                        }`}>
-                          <Icon className="h-5 w-5" />
-                          {isPassed && !isActive && (
-                            <div className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-indigo-600 text-[10px] text-white">
-                              <CheckCircle2 className="h-3 w-3" />
-                            </div>
-                          )}
-                        </div>
-                        <span className={`absolute -bottom-6 whitespace-nowrap text-[10px] font-bold uppercase tracking-wider transition-colors ${
-                          isActive ? 'text-indigo-600' : 'text-slate-400'
-                        }`}>
-                          {step.title}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Content Area with Animation */}
-            <div className="flex-1 overflow-y-auto px-10 py-8 no-scrollbar relative">
-              <AnimatePresence mode="wait" custom={direction}>
-                <motion.div
-                  key={currentStep}
-                  custom={direction}
-                  variants={variants}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={{
-                    x: { type: "spring", stiffness: 300, damping: 30 },
-                    opacity: { duration: 0.2 }
-                  }}
-                  className="w-full h-full"
-                >
+              {/* Content Area with Animation */}
+              <div className="flex-1 overflow-y-auto px-8 py-8 no-scrollbar relative">
+                <AnimatePresence mode="wait" custom={direction}>
+                  <motion.div
+                    key={currentStep}
+                    custom={direction}
+                    variants={variants}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{
+                      x: { type: "spring", stiffness: 300, damping: 30 },
+                      opacity: { duration: 0.2 }
+                    }}
+                    className="w-full h-full"
+                  >
                   {currentStep === 1 && (
                     <div className="grid grid-cols-1 gap-10 md:grid-cols-2">
                       <div className="space-y-8">
@@ -702,6 +740,62 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
                     <div className="space-y-8">
                       <div className="rounded-[32px] border border-slate-200 bg-slate-50/50 p-8 shadow-sm">
                         <div className="flex items-center gap-3 mb-6">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600">
+                            <MessageCircle className="h-6 w-6" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold text-slate-900">İletişim Planı Ekle</h3>
+                            <p className="text-sm text-slate-500">Projedeki toplantı ve raporlama süreçlerini planlayın</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <input type="text" value={newCommunicationPlan.meetingType} onChange={(e) => setNewCommunicationPlan(c => ({...c, meetingType: e.target.value}))} placeholder="Toplantı Adı (Örn: Haftalık Durum)" className="rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                          <select value={newCommunicationPlan.frequency || 'Haftalık'} onChange={(e) => setNewCommunicationPlan(c => ({...c, frequency: e.target.value}))} className="rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                            <option value="Günlük">Günlük</option>
+                            <option value="Haftalık">Haftalık</option>
+                            <option value="Aylık">Aylık</option>
+                            <option value="İhtiyaç Halinde">İhtiyaç Halinde</option>
+                          </select>
+                          <input type="text" value={newCommunicationPlan.channel || ''} onChange={(e) => setNewCommunicationPlan(c => ({...c, channel: e.target.value}))} placeholder="Kanal (Örn: Teams, Zoom, E-posta)" className="rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                          <input type="text" value={newCommunicationPlan.participants || ''} onChange={(e) => setNewCommunicationPlan(c => ({...c, participants: e.target.value}))} placeholder="Katılımcılar" className="rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                        </div>
+                        <button type="button" onClick={addCommunicationPlan} disabled={!newCommunicationPlan.meetingType} className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                          <Plus className="h-5 w-5" /> Plan Ekle
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <AnimatePresence>
+                          {form.communicationPlans?.map((plan, idx) => (
+                            <motion.div key={idx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                              <div className="flex items-center gap-4">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 font-bold">{idx + 1}</div>
+                                <div>
+                                  <h4 className="font-bold text-slate-900">{plan.meetingType}</h4>
+                                  <p className="text-xs text-slate-500">{plan.frequency} • {plan.channel} • {plan.participants}</p>
+                                </div>
+                              </div>
+                              <button type="button" onClick={() => removeCommunicationPlan(idx)} className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-colors">
+                                <Trash2 className="h-5 w-5" />
+                              </button>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                        {(!form.communicationPlans || form.communicationPlans.length === 0) && (
+                          <div className="text-center py-10 px-4 rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                            <MessageCircle className="mx-auto h-8 w-8 text-slate-400 mb-3" />
+                            <p className="text-sm font-medium text-slate-600">Henüz iletişim planı eklenmedi</p>
+                            <p className="text-xs text-slate-400 mt-1">Projenin iletişim süreçlerini belirlemek için yukarıdaki formu kullanın.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentStep === 6 && (
+                    <div className="space-y-8">
+                      <div className="rounded-[32px] border border-slate-200 bg-slate-50/50 p-8 shadow-sm">
+                        <div className="flex items-center gap-3 mb-6">
                           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white">
                             <AlignLeft className="h-5 w-5" />
                           </div>
@@ -806,7 +900,7 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
                     </div>
                   )}
 
-                  {currentStep === 6 && (
+                  {currentStep === 7 && (
                     <div className="space-y-8">
                       <div className="rounded-[32px] border border-slate-200 bg-slate-50/50 p-8 shadow-sm">
                         <div className="flex items-center gap-3 mb-6">
@@ -910,7 +1004,78 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
                     </div>
                   )}
 
-                  {currentStep === 7 && (
+                  {currentStep === 8 && (
+                    <div className="space-y-8">
+                      <div className="rounded-[32px] border border-slate-200 bg-slate-50/50 p-8 shadow-sm">
+                        <div className="flex items-center gap-3 mb-6">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-100 text-indigo-600">
+                            <DollarSign className="h-6 w-6" />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-bold text-slate-900">Bütçe Kalemi Ekle</h3>
+                            <p className="text-sm text-slate-500">Projenizin tahmini maliyetlerini ve kaynaklarını belirleyin</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                          <input type="text" value={newCostItem.title} onChange={(e) => setNewCostItem(c => ({...c, title: e.target.value}))} placeholder="Kalem Adı (Örn: CRM Lisansı)" className="rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                          <select value={newCostItem.category} onChange={(e) => setNewCostItem(c => ({...c, category: e.target.value as any}))} className="rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                            <option value="Personel">Personel</option>
+                            <option value="Yazılım Lisansı">Yazılım Lisansı</option>
+                            <option value="Donanım">Donanım</option>
+                            <option value="Sunucu / Hosting">Sunucu / Hosting</option>
+                            <option value="Eğitim">Eğitim</option>
+                            <option value="Danışmanlık">Danışmanlık</option>
+                            <option value="Test">Test</option>
+                            <option value="Bakım">Bakım</option>
+                          </select>
+                          <div className="relative">
+                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+                            <input type="number" min="0" value={newCostItem.estimatedCost || ''} onChange={(e) => setNewCostItem(c => ({...c, estimatedCost: Number(e.target.value)}))} placeholder="Tahmini Tutar" className="w-full rounded-xl border border-slate-200 pl-10 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                          </div>
+                          <select value={newCostItem.currency} onChange={(e) => setNewCostItem(c => ({...c, currency: e.target.value as any}))} className="rounded-xl border border-slate-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+                            <option value="USD">USD ($)</option>
+                            <option value="TRY">TRY (₺)</option>
+                            <option value="EUR">EUR (€)</option>
+                            <option value="GBP">GBP (£)</option>
+                          </select>
+                        </div>
+                        <button type="button" onClick={addCostItem} disabled={!newCostItem.title || newCostItem.estimatedCost <= 0} className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition-all hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                          <Plus className="h-5 w-5" /> Kalem Ekle
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <AnimatePresence>
+                          {form.costItems?.map((item, idx) => (
+                            <motion.div key={idx} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95 }} className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                              <div className="flex items-center gap-4">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 font-bold">{idx + 1}</div>
+                                <div>
+                                  <h4 className="font-bold text-slate-900">{item.title}</h4>
+                                  <p className="text-xs text-slate-500">{item.category}</p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-4">
+                                <span className="font-bold text-slate-700 text-lg">{item.estimatedCost.toLocaleString()} {item.currency}</span>
+                                <button type="button" onClick={() => removeCostItem(idx)} className="rounded-xl p-2 text-slate-400 hover:bg-rose-50 hover:text-rose-500 transition-colors">
+                                  <Trash2 className="h-5 w-5" />
+                                </button>
+                              </div>
+                            </motion.div>
+                          ))}
+                        </AnimatePresence>
+                        {(!form.costItems || form.costItems.length === 0) && (
+                          <div className="text-center py-10 px-4 rounded-3xl border-2 border-dashed border-slate-200 bg-slate-50/50">
+                            <DollarSign className="mx-auto h-8 w-8 text-slate-400 mb-3" />
+                            <p className="text-sm font-medium text-slate-600">Henüz bütçe kalemi eklenmedi</p>
+                            <p className="text-xs text-slate-400 mt-1">Projenin maliyetlerini belirlemek için yukarıdaki formu kullanın.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentStep === 9 && (
                     <div className="flex items-center justify-center h-full">
                       <div className="max-w-md w-full rounded-[40px] border border-slate-200 bg-slate-50/50 p-10 text-center space-y-6">
                         <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-indigo-600 text-white shadow-xl shadow-indigo-100">
@@ -969,7 +1134,7 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
                     </div>
                   )}
 
-                  {currentStep === 8 && (
+                  {currentStep === 10 && (
                     <div className="flex flex-col items-center justify-center h-full space-y-10">
                       <div className="text-center space-y-4">
                         <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 animate-bounce shadow-xl shadow-emerald-50">
@@ -1047,41 +1212,229 @@ export default function CreateProjectModal({ isOpen, onClose, onCreate, managers
 
             {/* Footer */}
             <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/50 p-6">
-              <button 
-                onClick={handlePrev} 
-                className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition-all hover:bg-slate-50 hover:text-indigo-600 shadow-sm ${currentStep === 1 ? 'invisible' : ''}`}
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              
-              <div className="flex gap-4">
+              </div>
+
+              {/* Navigation Footer */}
+              <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/30 px-8 py-6">
                 <button 
-                  type="button" 
-                  onClick={onClose} 
-                  className="rounded-[20px] px-8 py-4 text-sm font-bold text-slate-500 transition-all hover:text-slate-900 hover:bg-slate-50"
+                  onClick={handlePrev} 
+                  className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 transition-all hover:bg-slate-50 hover:text-indigo-600 shadow-sm ${currentStep === 1 ? 'invisible' : ''}`}
                 >
-                  İptal
+                  <ChevronLeft className="h-5 w-5" />
                 </button>
-                <button 
-                  type="button" 
-                  onClick={handleNext} 
-                  disabled={isSubmitting || (currentStep === 1 && !form.name)} 
-                  className={`group flex items-center gap-3 rounded-[20px] px-10 py-4 text-sm font-bold text-white shadow-2xl transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
-                    currentStep === STEPS.length ? 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700' : 'bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700'
-                  }`}
-                >
-                  {isSubmitting ? (
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-                  ) : (
-                    <>
-                      {currentStep === STEPS.length || initialProject ? (initialProject ? 'Değişiklikleri Kaydet' : 'Projeyi Hemen Başlat') : 'Sonraki Adım'}
-                      {currentStep < STEPS.length && !initialProject && <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />}
-                    </>
-                  )}
-                </button>
+                
+                <div className="flex gap-4">
+                  <button 
+                    type="button" 
+                    onClick={onClose} 
+                    className="rounded-[20px] px-8 py-4 text-sm font-bold text-slate-500 transition-all hover:text-slate-900 hover:bg-slate-50"
+                  >
+                    İptal
+                  </button>
+                  <button 
+                    type="button" 
+                    onClick={handleNext} 
+                    disabled={isSubmitting || (currentStep === 1 && !form.name)} 
+                    className={`group flex items-center gap-3 rounded-[20px] px-10 py-4 text-sm font-bold text-white shadow-2xl transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
+                      currentStep === STEPS.length ? 'bg-emerald-600 shadow-emerald-200 hover:bg-emerald-700' : 'bg-indigo-600 shadow-indigo-200 hover:bg-indigo-700'
+                    }`}
+                  >
+                    {isSubmitting ? (
+                      <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    ) : (
+                      <>
+                        {currentStep === STEPS.length || initialProject ? (initialProject ? 'Değişiklikleri Kaydet' : 'Projeyi Hemen Başlat') : 'Sonraki Adım'}
+                        {currentStep < STEPS.length && !initialProject && <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />}
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
+            {/* Right Column: AI Assistant (Slide-Out Drawer) */}
+            <AnimatePresence>
+              {isAiPanelOpen && (
+                <motion.div 
+                  initial={{ x: '100%', opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: '100%', opacity: 0 }}
+                  transition={{ type: "spring", damping: 25, stiffness: 200 }}
+                  className="absolute right-0 top-0 bottom-0 w-[400px] flex flex-col bg-slate-50/95 backdrop-blur-xl border-l border-slate-200 z-50 shadow-[-20px_0_40px_rgba(0,0,0,0.05)] rounded-r-[40px] overflow-hidden"
+                >
+              {/* AI Header */}
+              <div className="p-8 pb-4">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-slate-200">
+                      <Sparkles className="h-5 w-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-900">AI Asistanı</h3>
+                      <div className="flex items-center gap-1.5">
+                        <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aktif & Hazır</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => setIsAiPanelOpen(false)} 
+                    className="group flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-500 transition-all hover:bg-slate-100 shadow-sm ring-1 ring-slate-200"
+                  >
+                    <ChevronRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                  </button>
+                </div>
+
+                <div className="rounded-2xl bg-indigo-600 p-5 text-white shadow-xl shadow-indigo-100 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                    <Bot className="h-20 w-20" />
+                  </div>
+                  <h4 className="relative text-sm font-bold flex items-center gap-2">
+                    <Wand2 className="h-4 w-4" />
+                    Sihirli Oluşturma
+                  </h4>
+                  <p className="relative mt-2 text-[11px] leading-relaxed text-indigo-100">
+                    Proje fikrinizi kısaca anlatın, AI tüm detayları (kapsam, riskler, wbs) saniyeler içinde sizin için planlasın.
+                  </p>
+                </div>
+              </div>
+
+              {/* AI Content Area */}
+              <div className="flex-1 p-8 pt-4 flex flex-col no-scrollbar">
+                <div className="flex-1 flex flex-col items-center justify-center text-center p-6 space-y-4">
+                  {aiSuccess ? (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9 }} 
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="space-y-4"
+                    >
+                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                        <CheckCircle2 className="h-8 w-8" />
+                      </div>
+                      <h5 className="text-sm font-bold text-slate-900">Plan Hazırlandı!</h5>
+                      <p className="text-[11px] text-slate-500">AI tüm adımları doldurdu. Şimdi soldaki formu inceleyip projeyi başlatabilirsiniz.</p>
+                      <button 
+                        onClick={() => { setAiSuccess(false); setAiPrompt(''); }}
+                        className="text-[10px] font-bold text-indigo-600 hover:underline"
+                      >
+                        Yeni bir şey dene
+                      </button>
+                    </motion.div>
+                  ) : isAiGenerating ? (
+                    <div className="space-y-4 w-full">
+                      <div className="flex justify-center">
+                        <div className="relative">
+                          <div className="h-16 w-16 rounded-full border-4 border-indigo-100 border-t-indigo-600 animate-spin" />
+                          <Sparkles className="absolute inset-0 m-auto h-6 w-6 text-indigo-600 animate-pulse" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-bold text-slate-600 uppercase tracking-widest">Planlanıyor...</p>
+                        <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden">
+                          <motion.div 
+                            initial={{ x: '-100%' }}
+                            animate={{ x: '100%' }}
+                            transition={{ repeat: Infinity, duration: 1.5, ease: "linear" }}
+                            className="h-full w-1/3 bg-indigo-600"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-300">
+                        <Bot className="h-8 w-8" />
+                      </div>
+                      <div className="space-y-1">
+                        <h5 className="text-sm font-bold text-slate-400 uppercase tracking-widest">Bekleniyor</h5>
+                        <p className="text-[11px] text-slate-400">Aşağıdaki kutuya bir istem girin.</p>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Prompt Input */}
+                <div className="mt-auto space-y-4">
+                  <div className="relative">
+                    <textarea 
+                      value={aiPrompt}
+                      onChange={(e) => setAiPrompt(e.target.value)}
+                      placeholder="Örn: E-ticaret sitemiz için modern bir ödeme sistemi entegrasyonu projesi planla..."
+                      className="w-full h-32 rounded-2xl border border-slate-200 bg-white p-4 pb-12 text-sm text-slate-900 shadow-sm transition-all focus:border-indigo-500 focus:outline-none focus:ring-4 focus:ring-indigo-500/5 placeholder:text-slate-400 resize-none"
+                    />
+                    <div className="absolute bottom-3 right-3 flex items-center gap-2">
+                      <span className="text-[10px] font-medium text-slate-400">{aiPrompt.length} / 500</span>
+                      <button 
+                        disabled={!aiPrompt.trim() || isAiGenerating}
+                        onClick={async () => {
+                          setIsAiGenerating(true);
+                          try {
+                            const selectedManager = managers.find(m => m.id === form.managerId) || managers[0];
+                            const payload = {
+                              prompt: aiPrompt,
+                              context: {
+                                managerName: selectedManager?.name || 'Bilinmiyor',
+                                managerRole: selectedManager?.role || '',
+                                currentDate: new Date().toISOString().split('T')[0]
+                              }
+                            };
+                            const rawData = await generateProject(payload);
+                            
+                            // Normalizasyon: Bazen AI çıktıyı "project" veya "data" objesi içine sarabilir
+                            const data = rawData.project || rawData.data || rawData;
+
+                            setAiSuccess(true);
+                            
+                            // Update form with real AI data
+                            updateForm({
+                              name: data.name || data.projectName || data.title || 'AI Tarafından Oluşturuldu',
+                              description: data.description || data.summary || 'Proje detayları AI tarafından hazırlandı.',
+                              category: data.category || 'Diğer',
+                              themeColor: data.themeColor || '#4f46e5',
+                              startDate: data.startDate,
+                              endDate: data.endDate,
+                              problemStatement: data.problemStatement || '',
+                              targetUsers: data.targetUsers || '',
+                              directValue: data.directValue || '',
+                              strategicAlignment: data.strategicAlignment || '',
+                              feasibilityScore: data.feasibilityScore || 50,
+                              notDoingImpact: data.notDoingImpact || '',
+                              inScope: data.inScope || '',
+                              outOfScope: data.outOfScope || '',
+                              assumptions: data.assumptions || '',
+                              constraints: data.constraints || '',
+                              acceptanceCriteria: data.acceptanceCriteria || '',
+                              selectedWbsTemplate: data.selectedWbsTemplate || 'empty',
+                              createDefaultWbsTasks: (data.selectedWbsTemplate && data.selectedWbsTemplate !== 'empty'),
+                              stakeholders: data.stakeholders || [],
+                              communicationPlans: data.communicationPlans || [],
+                              requirements: data.requirements || [],
+                              risks: data.risks || [],
+                              costItems: data.costItems || []
+                            });
+                          } catch (error: any) {
+                            alert(error.message || 'AI ile plan oluşturulurken bir hata oluştu.');
+                          } finally {
+                            setIsAiGenerating(false);
+                          }
+                        }}
+                        className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-200 transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-40 disabled:grayscale"
+                      >
+                        <Send className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2 p-3 rounded-xl bg-indigo-50/50">
+                    <Info className="h-3.5 w-3.5 text-indigo-600 shrink-0 mt-0.5" />
+                    <p className="text-[10px] leading-normal text-indigo-700 font-medium">
+                      İpucu: Sektör, hedef kitle ve öncelikli hedefleri belirtirseniz daha spesifik bir plan oluşturabilirim.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+            )}
+            </AnimatePresence>
           </motion.div>
 
           {/* Root Level Popovers (Escapes modal overflow restrictions) */}

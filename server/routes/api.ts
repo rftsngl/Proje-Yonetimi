@@ -60,7 +60,7 @@ import {
   updateProjectCostItem,
   deleteProjectCostItem,
 } from '../services/dashboardService.js';
-import { generateProjectReport } from '../services/aiService.js';
+import { generateProjectReport, generateProjectPlanning } from '../services/aiService.js';
 import { getUserFromToken, loginUser, logoutUser, registerUser, resetPassword } from '../services/authService.js';
 import {
   changeOwnPassword,
@@ -222,6 +222,25 @@ apiRouter.get('/reports/projects/:projectId', async (req, res, next) => {
     const { projectId } = req.params;
     const report = await generateProjectReport({ projectId, workspaceId: authResult.user.workspaceId });
     res.json({ report });
+  } catch (error) {
+    next(error);
+  }
+});
+
+apiRouter.post('/ai/generate-project', async (req, res, next) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader?.split(' ')[1];
+    if (!token) return res.status(401).json({ message: 'Yetkisiz erişim' });
+
+    const authResult = await getUserFromToken(token);
+    if (!authResult || !authResult.user) return res.status(401).json({ message: 'Yetkisiz erişim' });
+    
+    const { prompt, context } = req.body;
+    if (!prompt) return res.status(400).json({ message: 'İstem (prompt) zorunludur.' });
+
+    const data = await generateProjectPlanning(prompt, context);
+    res.json(data);
   } catch (error) {
     next(error);
   }

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Notification } from '../types';
-import { Bell, CheckCircle2, Clock, MessageSquare, Briefcase, MoreHorizontal, Settings, Trash2 } from 'lucide-react';
+import { Bell, CheckCircle2, Clock, MessageSquare, Briefcase, MoreHorizontal, Settings, Trash2, Filter, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ConfirmModal from './ConfirmModal';
 
 interface NotificationsProps {
   notifications: Notification[];
@@ -16,15 +17,32 @@ interface NotificationsProps {
   onLoadMore?: () => void;
 }
 
+const TYPE_FILTERS = [
+  { key: 'all', label: 'Tümü', icon: Bell, color: 'bg-slate-50 text-slate-600 ring-slate-200' },
+  { key: 'task', label: 'Görevler', icon: CheckCircle2, color: 'bg-indigo-50 text-indigo-600 ring-indigo-200' },
+  { key: 'project', label: 'Projeler', icon: Briefcase, color: 'bg-blue-50 text-blue-600 ring-blue-200' },
+  { key: 'mention', label: 'Bahsetmeler', icon: MessageSquare, color: 'bg-amber-50 text-amber-600 ring-amber-200' },
+  { key: 'system', label: 'Sistem', icon: Settings, color: 'bg-rose-50 text-rose-600 ring-rose-200' },
+] as const;
+
 export default function Notifications({ notifications, onReadAll, onDelete, onDeleteAll, onToggleRead, onOpenDetail, checkIsValidTarget, hasMore, isLoadingMore, onLoadMore }: NotificationsProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isDeleteAllConfirmOpen, setIsDeleteAllConfirmOpen] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+
+  const filteredNotifications = useMemo(() => {
+    if (typeFilter === 'all') return notifications;
+    return notifications.filter(n => n.type === typeFilter);
+  }, [notifications, typeFilter]);
 
   useEffect(() => {
     const handleOutsideClick = () => setActiveMenuId(null);
     document.addEventListener('click', handleOutsideClick);
     return () => document.removeEventListener('click', handleOutsideClick);
   }, []);
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'task':
@@ -59,18 +77,27 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Bildirimler</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-slate-900">Bildirimler</h1>
+            {unreadCount > 0 && (
+              <span className="flex items-center gap-1.5 rounded-full bg-indigo-100 px-3 py-1 text-xs font-bold text-indigo-700">
+                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
+                {unreadCount} okunmamış
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-slate-500">Uygulama genelindeki tüm aktiviteleri buradan takip edebilirsiniz.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={onReadAll}
-            className="rounded-xl bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-600 transition-all hover:bg-indigo-100"
+            disabled={unreadCount === 0}
+            className="rounded-xl bg-indigo-50 px-4 py-2 text-sm font-bold text-indigo-600 transition-all hover:bg-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Hepsini Okundu İşaretle
           </button>
           <button 
-            onClick={() => setIsModalOpen(true)} 
+            onClick={() => setIsDeleteAllConfirmOpen(true)} 
             disabled={!notifications.length}
             className="rounded-xl bg-slate-50 p-2 text-slate-400 transition-all hover:bg-slate-100 hover:text-rose-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
@@ -79,13 +106,45 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
         </div>
       </div>
 
+      {/* Type Filter Chips */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+        <Filter className="h-4 w-4 text-slate-400 shrink-0" />
+        {TYPE_FILTERS.map(filter => {
+          const Icon = filter.icon;
+          const isActive = typeFilter === filter.key;
+          const count = filter.key === 'all' ? notifications.length : notifications.filter(n => n.type === filter.key).length;
+          return (
+            <button
+              key={filter.key}
+              onClick={() => setTypeFilter(filter.key)}
+              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all whitespace-nowrap ${
+                isActive ? `${filter.color} ring-1` : 'bg-white text-slate-400 hover:bg-slate-50'
+              }`}
+            >
+              <Icon className="h-3 w-3" />
+              {filter.label}
+              <span className={`ml-0.5 text-[10px] ${isActive ? 'opacity-70' : 'opacity-50'}`}>({count})</span>
+            </button>
+          );
+        })}
+        {typeFilter !== 'all' && (
+          <button
+            onClick={() => setTypeFilter('all')}
+            className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-[10px] font-bold text-rose-500 transition-all hover:bg-rose-50"
+          >
+            <X className="h-3 w-3" />
+            Temizle
+          </button>
+        )}
+      </div>
+
       <div className="rounded-3xl border border-slate-100 bg-white shadow-sm">
         <motion.div 
           className="divide-y divide-slate-50"
           initial="hidden" animate="visible"
           variants={{ visible: { transition: { staggerChildren: 0.04 } } }}
         >
-          {notifications.map((notification) => (
+          {filteredNotifications.map((notification) => (
             <motion.div
               key={notification.id}
               variants={{ hidden: { opacity: 0, x: -15 }, visible: { opacity: 1, x: 0 } }}
@@ -167,13 +226,17 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
           ))}
         </motion.div>
 
-        {notifications.length === 0 && (
+        {filteredNotifications.length === 0 && (
           <div className="p-20 text-center">
             <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-slate-50">
-              <Bell className="h-10 w-10 text-slate-300" />
+              {typeFilter !== 'all' ? <Filter className="h-10 w-10 text-slate-300" /> : <Bell className="h-10 w-10 text-slate-300" />}
             </div>
-            <h3 className="text-lg font-bold text-slate-900">Henüz bildiriminiz yok</h3>
-            <p className="mt-1 text-slate-500">Yeni bir gelişme olduğunda burada görünecektir.</p>
+            <h3 className="text-lg font-bold text-slate-900">
+              {typeFilter !== 'all' ? 'Bu kategoride bildirim yok' : 'Henüz bildiriminiz yok'}
+            </h3>
+            <p className="mt-1 text-slate-500">
+              {typeFilter !== 'all' ? 'Farklı bir filtre seçebilirsiniz.' : 'Yeni bir gelişme olduğunda burada görünecektir.'}
+            </p>
           </div>
         )}
 
@@ -190,47 +253,19 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
         )}
       </div>
 
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setIsModalOpen(false)}
-              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
-            />
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
-            >
-              <h3 className="text-xl font-bold text-slate-900">Tümünü Sil</h3>
-              <p className="mt-2 text-sm text-slate-500">
-                Tüm bildirimleri kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.
-              </p>
-              <div className="mt-6 flex items-center gap-3">
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="flex-1 rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-200"
-                >
-                  İptal
-                </button>
-                <button
-                  onClick={() => {
-                    setIsModalOpen(false);
-                    onDeleteAll?.();
-                  }}
-                  className="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-rose-700"
-                >
-                  Evet, Sil
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Delete All Confirmation - uses shared ConfirmModal */}
+      <ConfirmModal
+        isOpen={isDeleteAllConfirmOpen}
+        title="Tümünü Sil"
+        message="Tüm bildirimleri kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz."
+        confirmLabel="Evet, Sil"
+        cancelLabel="İptal"
+        onConfirm={() => {
+          setIsDeleteAllConfirmOpen(false);
+          onDeleteAll?.();
+        }}
+        onCancel={() => setIsDeleteAllConfirmOpen(false)}
+      />
     </div>
   );
 }

@@ -11,6 +11,7 @@ interface NotificationDropdownProps {
   onDelete?: (id: string) => void;
   onDeleteAll?: () => void;
   onToggleRead?: (id: string, read: boolean) => void;
+  onViewAll?: () => void;
 }
 
 export default function NotificationDropdown({
@@ -22,6 +23,7 @@ export default function NotificationDropdown({
   onDelete,
   onDeleteAll,
   onToggleRead,
+  onViewAll,
 }: NotificationDropdownProps) {
   const getIcon = (type: string) => {
     switch (type) {
@@ -125,6 +127,17 @@ export default function NotificationDropdown({
                 <p className="text-sm text-slate-500">Henüz bildirimin yok.</p>
               </div>
             )}
+          </div>
+
+          {/* View All Button */}
+          <div className="border-t border-slate-50 p-3">
+            <button
+              onClick={() => { onClose(); onViewAll?.(); }}
+              className="flex w-full items-center justify-center gap-1.5 rounded-xl bg-slate-50 py-2.5 text-xs font-bold text-slate-600 transition-all hover:bg-indigo-50 hover:text-indigo-600"
+            >
+              <Bell className="h-3.5 w-3.5" />
+              Tüm Bildirimleri Gör
+            </button>
           </div>
         </motion.div>
       )}

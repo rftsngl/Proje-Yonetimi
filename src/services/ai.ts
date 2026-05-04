@@ -35,3 +35,18 @@ export const getProjectReport = async (projectId: string): Promise<string> => {
   const data = await response.json();
   return data.report;
 };
+
+export const generateProject = async (payload: { prompt: string, context: any }): Promise<any> => {
+  const response = await fetch('/api/ai/generate-project', {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Proje planı oluşturulamadı.');
+  }
+
+  return response.json();
+};

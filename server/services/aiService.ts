@@ -261,3 +261,145 @@ ${isSingleProject ? `TEK PROJE RAPORU FORMATI:
   const data = await response.json();
   return data.choices[0].message.content;
 };
+
+export const generateProjectPlanning = async (prompt: string, context?: any) => {
+  if (!env.openrouterApiKey) {
+    throw new Error('OpenRouter API anahtarı yapılandırılmamış.');
+  }
+
+  const systemPrompt = `Sen uzman bir proje yöneticisi ve iş analistisin. Kullanıcının verdiği fikri analiz edip PROFESYONEL ve DETAYLI bir proje planı çıkaracaksın.
+
+PROJE BAĞLAMI (Lütfen çıktılarını bu bağlama uygun, mantıklı ve gerçekçi verilerle doldur):
+- Proje Yöneticisi: ${context?.managerName || 'Bilinmiyor'} (${context?.managerRole || ''})
+- Mevcut Tarih (Proje Başlangıcı İçin): ${context?.currentDate || new Date().toISOString().split('T')[0]}
+
+DİKKAT - KESİN KURALLAR:
+1. ASLA markdown formatında cevap verme ( \`\`\`json veya \`\`\` kullanma).
+2. Doğrudan ve SADECE saf JSON objesi döndür.
+3. Çıktın fazladan bir sarmalayıcı (wrapper) objeye sahip OLMASIN. Doğrudan aşağıdaki özellikleri içeren tek bir obje olmalı.
+
+JSON FORMATI:
+{
+  "name": "Proje Adı (Örn: E-Ticaret Ödeme Otomasyonu)",
+  "description": "Projenin kapsamlı ve profesyonel amacı, iş değeri.",
+  "category": "Kategori",
+  "themeColor": "#4f46e5",
+  "startDate": "YYYY-MM-DD (Mevcut Tarihe Göre Gerçekçi Bir Başlangıç)",
+  "endDate": "YYYY-MM-DD (Gerçekçi Bitiş)",
+  "problemStatement": "Çözülmek istenen sorun nedir?",
+  "targetUsers": "Hedef kitle kimler?",
+  "directValue": "Operasyonel veya finansal getiri",
+  "strategicAlignment": "Şirket hedefleriyle uyumu",
+  "feasibilityScore": 85,
+  "notDoingImpact": "Yapılmazsa kaybedilecek fırsat veya doğacak risk",
+  "inScope": "Proje kapsamında neler yapılacak?",
+  "outOfScope": "Neler KESİNLİKLE yapılmayacak?",
+  "assumptions": "Dış kaynak, bütçe vb. varsayımlar",
+  "constraints": "Zaman, teknoloji veya regülasyon kısıtları",
+  "acceptanceCriteria": "Başarı şartları",
+  "selectedWbsTemplate": "software | marketing | infrastructure | empty (Proje türüne en uygun olanı seç)",
+  "stakeholders": [
+    { "name": "Örn: Finans Ekibi", "role": "Rol", "interest": "Yüksek", "power": "Yüksek" }
+  ],
+  "communicationPlans": [
+    { "meetingType": "Haftalık Durum Toplantısı", "frequency": "Haftalık", "channel": "Teams", "participants": "Proje Ekibi" }
+  ],
+  "requirements": [
+    { "title": "Gereksinim", "description": "Detay", "priority": "Must/Should/Could", "type": "Functional/Technical" }
+  ],
+  "risks": [
+    { "title": "Risk", "category": "Kategori", "probability": 3, "impact": 4, "mitigation": "Önlem" }
+  ],
+  "costItems": [
+    { "title": "CRM Lisansı", "category": "Yazılım Lisansı", "estimatedCost": 5000, "currency": "USD" }
+  ]
+}`;
+
+  const models = [
+    'nousresearch/hermes-3-llama-3.1-405b:free',
+    'nvidia/nemotron-3-super-120b-a12b:free',
+    'google/gemini-2.0-flash-lite-preview-02-05:free',
+    'meta-llama/llama-3.3-70b-instruct:free',
+    'qwen/qwen-2.5-72b-instruct:free',
+    'poolside/laguna-m.1:free',
+    'minimax/minimax-m2.5:free',
+    'tencent/hy3-preview:free'
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const model of models) {
+    console.log(`OpenRouter Requesting Planning with model: ${model} for:`, prompt);
+    
+    try {
+      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${env.openrouterApiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'http://localhost:3000',
+          'X-Title': 'Proje Yönetimi App',
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `Şu proje fikri için detaylı bir plan oluştur: ${prompt}` }
+          ],
+          temperature: 0.7,
+          response_format: { type: 'json_object' }
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error(`OpenRouter Planning Error with ${model}:`, errorData);
+        lastError = new Error(`Model ${model} failed`);
+        continue; // Try next model
+      }
+
+      const data = await response.json();
+      let content = data.choices[0]?.message?.content || '';
+      
+      try {
+        // Olası markdown formatlarını (```json ... ```) temizle ve sadece JSON kısmını al
+        content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        
+        let parsedJson;
+        if (jsonMatch) {
+          parsedJson = JSON.parse(jsonMatch[0]);
+        } else {
+          parsedJson = JSON.parse(content);
+        }
+
+        // Eğer AI çıktıyı gereksiz bir kök obje içine sardıysa (Örn: {"Project": {...}}) onu ayıkla
+        if (parsedJson && typeof parsedJson === 'object' && !Array.isArray(parsedJson)) {
+          const keys = Object.keys(parsedJson);
+          if (keys.length === 1 && typeof parsedJson[keys[0]] === 'object' && !Array.isArray(parsedJson[keys[0]])) {
+             parsedJson = parsedJson[keys[0]];
+          }
+        }
+
+        // Doğrulama: Eğer JSON çok boşsa veya temel alanlar yoksa modeli başarısız say ve diğerine geç
+        const keyCount = Object.keys(parsedJson).length;
+        if (keyCount < 5 || (!parsedJson.description && !parsedJson.problemStatement)) {
+          console.warn(`Model ${model} returned incomplete JSON:`, parsedJson);
+          throw new Error('Üretilen JSON yetersiz veya boş.');
+        }
+        
+        console.log(`Successfully generated planning with ${model}:`, JSON.stringify(parsedJson, null, 2));
+        return parsedJson;
+      } catch (e) {
+        console.error(`Invalid or incomplete AI Output from ${model}. Moving to next...`);
+        lastError = new Error('AI yetersiz bir yanıt döndürdü.');
+        continue; // Try next model if it returned invalid/incomplete JSON
+      }
+    } catch (e: any) {
+      console.error(`Fetch error with model ${model}:`, e);
+      lastError = e;
+    }
+  }
+
+  throw new Error('Tüm AI modelleri denendi ancak yanıt alınamadı. (Sistem aşırı yoğun)');
+};
