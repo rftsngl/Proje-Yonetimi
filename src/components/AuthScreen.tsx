@@ -4,6 +4,7 @@ import { Lock, Mail, User, UserPlus, Briefcase, ArrowLeft, KeyRound, CheckCircle
 import { DEPARTMENTS } from '../lib/departments';
 import { motion, AnimatePresence } from 'motion/react';
 import { resetPassword } from '../services/auth';
+import { Variants } from 'motion/react';
 
 interface AuthScreenProps {
   onLogin: (payload: LoginPayload) => Promise<void>;
@@ -68,7 +69,7 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
   };
 
   // Animasyon varyasyonları
-  const containerVariants = {
+  const containerVariants: Variants = {
     hidden: { opacity: 0 },
     visible: { 
       opacity: 1, 
@@ -76,7 +77,7 @@ export default function AuthScreen({ onLogin, onRegister, error, isLoading }: Au
     }
   };
 
-  const itemVariants = {
+  const itemVariants: Variants = {
     hidden: { opacity: 0, y: 20 },
     visible: { 
       opacity: 1, 

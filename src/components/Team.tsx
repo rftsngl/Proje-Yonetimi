@@ -422,7 +422,7 @@ function InviteMemberModal({ isOpen, onClose }: InviteMemberModalProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<AppRole>(ROLE_OPTIONS[3]); // Frontend Dev default
-  const [department, setDepartment] = useState(DEPARTMENTS[0]);
+  const [department, setDepartment] = useState<string>(DEPARTMENTS[0]);
   const [step, setStep] = useState<'form' | 'info'>('form');
 
   const handleSubmit = (e: FormEvent) => {

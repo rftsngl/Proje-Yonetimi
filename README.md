@@ -19,17 +19,19 @@ React + Vite arayüzü ve **Node.js/Express + MySQL** backend’i ile çalışan
 
 Proje kökünde `.env` dosyası oluşturun. Şablon için `.env.example` dosyasına bakın.
 
-| Değişken | Açıklama | Örnek |
-|----------|----------|--------|
-| `PORT` | Backend HTTP portu | `4000` |
-| `MYSQL_HOST` | MySQL sunucu adresi | `127.0.0.1` |
-| `MYSQL_PORT` | MySQL portu | `3306` |
-| `MYSQL_USER` | MySQL kullanıcı adı | `root` |
-| `MYSQL_PASSWORD` | MySQL şifresi (**zorunlu**) | Kendi şifreniz |
-| `MYSQL_DATABASE` | Veritabanı adı | `proje_yonetimi_app` |
-| `VITE_API_PROXY_TARGET` | Vite’nin `/api` isteklerini yönlendireceği backend | `http://localhost:4000` |
+| Değişken                | Açıklama                                                           | Örnek                   |
+| ----------------------- | ------------------------------------------------------------------ | ----------------------- |
+| `PORT`                  | Backend HTTP portu                                                 | `4000`                  |
+| `MYSQL_HOST`            | MySQL sunucu adresi                                                | `127.0.0.1`             |
+| `MYSQL_PORT`            | MySQL portu                                                        | `3306`                  |
+| `MYSQL_USER`            | MySQL kullanıcı adı                                                | `root`                  |
+| `MYSQL_PASSWORD`        | MySQL şifresi (**zorunlu**)                                        | Kendi şifreniz          |
+| `MYSQL_DATABASE`        | Veritabanı adı                                                     | `proje_yonetimi_app`    |
+| `VITE_API_PROXY_TARGET` | Vite’nin `/api` isteklerini yönlendireceği backend                 | `http://localhost:4000` |
+| `OPENROUTER_API_KEY`    | Yapay Zeka özellikleri için OpenRouter API anahtarı (İsteğe bağlı) | `YOUR_API_KEY`          |
 
 **Not:** Backend başlarken `PORT` doluysa bir sonraki port denenebilir. Konsolda farklı bir port yazıyorsa `.env` içindeki `PORT` ve `VITE_API_PROXY_TARGET` değerlerini o porta göre güncelleyin.
+**Önemli:** AI özellikleri (Sihirli Proje Oluşturma vb.) kullanmak istiyorsanız `OPENROUTER_API_KEY` eklemeniz zorunludur. Eklemezseniz uygulama çalışmaya devam eder ancak AI özelliklerinden yararlanamazsınız.
 
 ## 3. Kurulum ve çalıştırma
 
@@ -68,24 +70,13 @@ Geliştirme sırasında backend’i dosya değişiminde yeniden başlatmak için
 npm run server:dev
 ```
 
-## 4. Mevcut bir veritabanı yedeğinden başlamak (isteğe bağlı)
+## 4. Doğrulama ve üretim
 
-Projede veya `db_backup/` (veya `backups/`) altında `.sql` yedeğiniz varsa, önce boş bir veritabanı oluşturup yedeği içe aktarabilirsiniz:
-
-```bash
-mysql -h 127.0.0.1 -P 3306 -u root -p -e "CREATE DATABASE IF NOT EXISTS proje_yonetimi_app CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-mysql -h 127.0.0.1 -P 3306 -u root -p proje_yonetimi_app < db_backup/proje_yonetimi_app_backup.sql
-```
-
-`.env` içindeki `MYSQL_DATABASE` adı, içe aktardığınız veritabanı adıyla aynı olmalı. Sonra `npm run server` ile backend’i başlatın (şema zaten yedekte olduğu için init çoğunlukla mevcut tablolarla uyumludur).
-
-## 5. Doğrulama ve üretim
-
-| Komut | Açıklama |
-|--------|-----------|
-| `npm run lint` | Frontend TypeScript kontrolü |
-| `npm run lint:server` | Backend TypeScript kontrolü |
-| `npm run build` | Production frontend derlemesi (`dist/`) |
+| Komut                 | Açıklama                                |
+| --------------------- | --------------------------------------- |
+| `npm run lint`        | Frontend TypeScript kontrolü            |
+| `npm run lint:server` | Backend TypeScript kontrolü             |
+| `npm run build`       | Production frontend derlemesi (`dist/`) |
 
 ## Teknolojiler
 
@@ -98,3 +89,8 @@ mysql -h 127.0.0.1 -P 3306 -u root -p proje_yonetimi_app < db_backup/proje_yonet
 1. MySQL çalışıyor → `.env` içinde `MYSQL_PASSWORD` ve diğer `MYSQL_*` doğru
 2. `npm install` → `npm run server` (DB hazır)
 3. `npm run dev` → tarayıcıda http://localhost:3000
+
+**Giriş Bilgileri:** İlk kurulumda veritabanı boş olsa bile otomatik örnek bir kullanıcı oluşturulur:
+
+- E-posta: `ornek@zodiac.com`
+- Şifre: `123456`

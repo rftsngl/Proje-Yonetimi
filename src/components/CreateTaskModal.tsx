@@ -22,7 +22,7 @@ const initialState = {
   assigneeId: '',
   startDate: '',
   dueDate: '',
-  priority: 'Orta' as const,
+  priority: 'Orta' as 'Yüksek' | 'Orta' | 'Düşük',
 };
 
 const normalizeDateInput = (value?: string | null) => (value ? value.slice(0, 10) : '');
