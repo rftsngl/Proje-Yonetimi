@@ -132,3 +132,47 @@ export const getProjectCostItems = (projectId: string) =>
 
 export const getProjectTestItems = (projectId: string) =>
   api.get<import('../types').ProjectTestItem[]>(`/projects/${projectId}/test-items`);
+
+export const getProjectCommunicationPlans = (projectId: string) =>
+  api.get<import('../types').ProjectCommunicationPlan[]>(`/projects/${projectId}/communication-plans`);
+
+export const createProjectCommunicationPlan = (projectId: string, payload: import('../types').CreateProjectCommunicationPlanPayload) =>
+  api.post<{ id: string }>(`/projects/${projectId}/communication-plans`, payload);
+
+export const updateProjectCommunicationPlan = (projectId: string, planId: string, payload: Partial<import('../types').CreateProjectCommunicationPlanPayload>) =>
+  api.patch<{ ok: boolean }>(`/projects/${projectId}/communication-plans/${planId}`, payload);
+
+export const deleteProjectCommunicationPlan = (projectId: string, planId: string) =>
+  api.delete<{ ok: boolean }>(`/projects/${projectId}/communication-plans/${planId}`);
+
+// Paydaş CRUD
+export const createProjectStakeholder = (projectId: string, payload: { name: string; role: string; interest?: string; power?: string; expectation?: string; communicationMethod?: string }) =>
+  api.post<{ id: string }>(`/projects/${projectId}/stakeholders`, payload);
+export const updateProjectStakeholderApi = (projectId: string, itemId: string, payload: Record<string, unknown>) =>
+  api.patch<{ ok: boolean }>(`/projects/${projectId}/stakeholders/${itemId}`, payload);
+export const deleteProjectStakeholderApi = (projectId: string, itemId: string) =>
+  api.delete<{ ok: boolean }>(`/projects/${projectId}/stakeholders/${itemId}`);
+
+// Gereksinim CRUD
+export const createProjectRequirementApi = (projectId: string, payload: { title: string; description: string; type?: string; priority?: string; difficulty?: number; businessValue?: number }) =>
+  api.post<{ id: string }>(`/projects/${projectId}/requirements`, payload);
+export const updateProjectRequirementApi = (projectId: string, itemId: string, payload: Record<string, unknown>) =>
+  api.patch<{ ok: boolean }>(`/projects/${projectId}/requirements/${itemId}`, payload);
+export const deleteProjectRequirementApi = (projectId: string, itemId: string) =>
+  api.delete<{ ok: boolean }>(`/projects/${projectId}/requirements/${itemId}`);
+
+// Risk CRUD
+export const createProjectRiskApi = (projectId: string, payload: { title: string; category: string; probability?: number; impact?: number; mitigation?: string; contingency?: string }) =>
+  api.post<{ id: string }>(`/projects/${projectId}/risks`, payload);
+export const updateProjectRiskApi = (projectId: string, itemId: string, payload: Record<string, unknown>) =>
+  api.patch<{ ok: boolean }>(`/projects/${projectId}/risks/${itemId}`, payload);
+export const deleteProjectRiskApi = (projectId: string, itemId: string) =>
+  api.delete<{ ok: boolean }>(`/projects/${projectId}/risks/${itemId}`);
+
+// Bütçe CRUD
+export const createProjectCostItemApi = (projectId: string, payload: { title: string; category: string; estimatedCost?: number; actualCost?: number; currency?: string }) =>
+  api.post<{ id: string }>(`/projects/${projectId}/cost-items`, payload);
+export const updateProjectCostItemApi = (projectId: string, itemId: string, payload: Record<string, unknown>) =>
+  api.patch<{ ok: boolean }>(`/projects/${projectId}/cost-items/${itemId}`, payload);
+export const deleteProjectCostItemApi = (projectId: string, itemId: string) =>
+  api.delete<{ ok: boolean }>(`/projects/${projectId}/cost-items/${itemId}`);

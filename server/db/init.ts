@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS projects (
   progress INT NOT NULL DEFAULT 0,
   start_date DATE DEFAULT NULL,
   end_date DATE DEFAULT NULL,
-  status ENUM('Aktif', 'Tamamlandı') NOT NULL DEFAULT 'Aktif',
+  status ENUM('Taslak', 'Planlanıyor', 'Aktif', 'Askıda', 'Tamamlandı', 'İptal Edildi') NOT NULL DEFAULT 'Taslak',
   category VARCHAR(120) NOT NULL,
   theme_color VARCHAR(32) NOT NULL DEFAULT 'bg-indigo-600',
   workspace_id VARCHAR(32) DEFAULT NULL,
@@ -363,7 +363,7 @@ export const initializeDatabase = async () => {
 
   await pool.query(`
     ALTER TABLE projects
-      MODIFY COLUMN status ENUM('Aktif', 'Tamamlandı') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Aktif'
+      MODIFY COLUMN status ENUM('Taslak', 'Planlanıyor', 'Aktif', 'Askıda', 'Tamamlandı', 'İptal Edildi') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Taslak'
   `).catch(() => null);
 
   await pool.query(`

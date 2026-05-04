@@ -116,16 +116,19 @@ export interface CalendarEvent {
   eventType?: string;
 }
 
+export type ProjectStatus = 'Taslak' | 'Planlanıyor' | 'Aktif' | 'Askıda' | 'Tamamlandı' | 'İptal Edildi';
+
 export interface Project {
   id: string;
   name: string;
   description: string;
   manager: string;
   managerAvatar: string;
+  managerId: string;
   progress: number;
   daysLeft: number;
   team: string[];
-  status: 'Aktif' | 'Tamamlandı';
+  status: ProjectStatus;
   category: string;
   themeColor?: string;
   startDate?: string | null;
@@ -300,7 +303,7 @@ export interface UpdateProjectPayload extends Omit<CreateProjectPayload,
   'createDefaultWbsTasks' | 'selectedWbsTemplate'
 > {
   progress?: number;
-  status?: Project['status'];
+  status?: ProjectStatus;
 }
 
 // ---------------------------------------------------------------------------
@@ -388,6 +391,24 @@ export interface ProjectTestItem {
   status: string;
 }
 
+export interface ProjectCommunicationPlan {
+  id: string;
+  projectId: string;
+  meetingType: string;
+  frequency: string | null;
+  channel: string | null;
+  participants: string | null;
+  responsibleUserId: string | null;
+  responsibleUserName?: string | null;
+}
+
+export interface CreateProjectCommunicationPlanPayload {
+  meetingType: string;
+  frequency?: string;
+  channel?: string;
+  participants?: string;
+  responsibleUserId?: string;
+}
 export interface CreateCalendarEventPayload {
   title: string;
   date: string;

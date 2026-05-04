@@ -25,17 +25,24 @@ export default function Projects({
   canManageProjects,
   onGenerateReport,
 }: ProjectsProps) {
-  const [activeTab, setActiveTab] = useState<'Aktif' | 'Tamamlandı'>('Aktif');
+  const [activeTab, setActiveTab] = useState<'Aktif' | 'Tamamlandı' | 'Tümü'>('Aktif');
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'cards' | 'gantt'>('cards');
   const [zoom, setZoom] = useState<'day' | 'week' | 'month'>('week');
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
 
   const filteredProjects = projects.filter(
-    (project) =>
-      project.status === activeTab &&
-      (project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        project.description.toLowerCase().includes(searchQuery.toLowerCase())),
+    (project) => {
+      const matchSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          project.description.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const isActive = ['Taslak', 'Planlanıyor', 'Aktif', 'Askıda'].includes(project.status);
+      const isCompleted = ['Tamamlandı', 'İptal Edildi'].includes(project.status);
+
+      if (activeTab === 'Aktif') return isActive && matchSearch;
+      if (activeTab === 'Tamamlandı') return isCompleted && matchSearch;
+      return matchSearch; // Tümü
+    }
   );
 
   const toDate = (value?: string | null) => {
@@ -153,6 +160,14 @@ export default function Projects({
       <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex w-fit items-center gap-1 rounded-xl bg-slate-100 p-1">
+            <button
+              onClick={() => setActiveTab('Tümü')}
+              className={`rounded-lg px-4 py-2 text-sm font-bold transition-all ${
+                activeTab === 'Tümü' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              Tümü
+            </button>
             <button
               onClick={() => setActiveTab('Aktif')}
               className={`rounded-lg px-4 py-2 text-sm font-bold transition-all ${

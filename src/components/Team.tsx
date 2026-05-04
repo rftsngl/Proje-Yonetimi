@@ -677,7 +677,14 @@ function MemberProjectsModal({ member, projects, onClose }: MemberProjectsModalP
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold text-slate-900">{project.name}</h3>
                         <span className={`rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                          project.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
+                          ({
+                            'Taslak': 'bg-slate-100 text-slate-600',
+                            'Planlanıyor': 'bg-amber-100 text-amber-700',
+                            'Aktif': 'bg-emerald-100 text-emerald-700',
+                            'Askıda': 'bg-orange-100 text-orange-700',
+                            'Tamamlandı': 'bg-slate-100 text-slate-600',
+                            'İptal Edildi': 'bg-rose-100 text-rose-700',
+                          } as Record<string, string>)[project.status] || 'bg-slate-100 text-slate-600'
                         }`}>
                           {project.status}
                         </span>

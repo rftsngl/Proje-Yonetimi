@@ -43,6 +43,22 @@ import {
   getProjectRisks,
   getProjectCostItems,
   getProjectTestItems,
+  getProjectCommunicationPlans,
+  addProjectCommunicationPlan,
+  updateProjectCommunicationPlan,
+  deleteProjectCommunicationPlan,
+  addProjectStakeholder,
+  updateProjectStakeholder,
+  deleteProjectStakeholder,
+  addProjectRequirement,
+  updateProjectRequirement,
+  deleteProjectRequirement,
+  addProjectRisk,
+  updateProjectRisk,
+  deleteProjectRisk,
+  addProjectCostItem,
+  updateProjectCostItem,
+  deleteProjectCostItem,
 } from '../services/dashboardService.js';
 import { generateProjectReport } from '../services/aiService.js';
 import { getUserFromToken, loginUser, logoutUser, registerUser, resetPassword } from '../services/authService.js';
@@ -423,9 +439,13 @@ apiRouter.post('/projects', async (req, res, next) => {
 
     const body = req.body;
 
-    if (!body.name || !body.description || !body.category || !body.managerId) {
-      return res.status(400).json({ message: 'Zorunlu proje alanlari eksik.' });
+    if (!body.name || !body.category) {
+      return res.status(400).json({ message: 'Zorunlu proje alanlari eksik (name, category).' });
     }
+
+    // managerId boşsa aktif kullanıcıyı ata, description yoksa boş string
+    if (!body.managerId) body.managerId = session.user.id;
+    if (!body.description) body.description = '';
 
     // Tarih validasyonu
     if (body.startDate && body.endDate && body.startDate > body.endDate) {
@@ -544,6 +564,187 @@ apiRouter.get('/projects/:projectId/test-items', async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// İletişim Planı — CRUD endpoint'leri
+// ---------------------------------------------------------------------------
+
+apiRouter.get('/projects/:projectId/communication-plans', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    const data = await getProjectCommunicationPlans(req.params.projectId, session.user.id);
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.post('/projects/:projectId/communication-plans', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    const { meetingType, frequency, channel, participants, responsibleUserId } = req.body;
+    if (!meetingType?.trim()) {
+      return res.status(400).json({ message: 'Toplantı türü zorunludur.' });
+    }
+    const id = await addProjectCommunicationPlan(req.params.projectId, { meetingType: meetingType.trim(), frequency, channel, participants, responsibleUserId }, session.user.id);
+    return res.status(201).json({ id });
+  } catch (error) {
+    if (error instanceof Error) return res.status(400).json({ message: error.message });
+    return next(error);
+  }
+});
+
+apiRouter.patch('/projects/:projectId/communication-plans/:planId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    const { meetingType, frequency, channel, participants, responsibleUserId } = req.body;
+    await updateProjectCommunicationPlan(req.params.planId, { meetingType, frequency, channel, participants, responsibleUserId }, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.delete('/projects/:projectId/communication-plans/:planId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    await deleteProjectCommunicationPlan(req.params.planId, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// ---- Paydaş CRUD ----
+apiRouter.post('/projects/:projectId/stakeholders', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    const { name, role, interest, power, expectation, communicationMethod } = req.body;
+    if (!name?.trim() || !role?.trim()) return res.status(400).json({ message: 'name ve role zorunludur.' });
+    const id = await addProjectStakeholder(req.params.projectId, { name: name.trim(), role: role.trim(), interest, power, expectation, communicationMethod }, session.user.id);
+    return res.json({ ok: true, id });
+  } catch (error) { return next(error); }
+});
+apiRouter.patch('/projects/:projectId/stakeholders/:itemId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    await updateProjectStakeholder(req.params.itemId, req.body, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+apiRouter.delete('/projects/:projectId/stakeholders/:itemId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    await deleteProjectStakeholder(req.params.itemId, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+
+// ---- Gereksinim CRUD ----
+apiRouter.post('/projects/:projectId/requirements', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    const { title, description, type, priority, difficulty, businessValue, acceptanceCriteria } = req.body;
+    if (!title?.trim() || !description?.trim()) return res.status(400).json({ message: 'title ve description zorunludur.' });
+    const id = await addProjectRequirement(req.params.projectId, { title: title.trim(), description: description.trim(), type, priority, difficulty, businessValue, acceptanceCriteria }, session.user.id);
+    return res.json({ ok: true, id });
+  } catch (error) { return next(error); }
+});
+apiRouter.patch('/projects/:projectId/requirements/:itemId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    await updateProjectRequirement(req.params.itemId, req.body, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+apiRouter.delete('/projects/:projectId/requirements/:itemId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    await deleteProjectRequirement(req.params.itemId, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+
+// ---- Risk CRUD ----
+apiRouter.post('/projects/:projectId/risks', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    const { title, category, probability, impact, mitigation, contingency } = req.body;
+    if (!title?.trim() || !category?.trim()) return res.status(400).json({ message: 'title ve category zorunludur.' });
+    const id = await addProjectRisk(req.params.projectId, { title: title.trim(), category: category.trim(), probability, impact, mitigation, contingency }, session.user.id);
+    return res.json({ ok: true, id });
+  } catch (error) { return next(error); }
+});
+apiRouter.patch('/projects/:projectId/risks/:itemId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    await updateProjectRisk(req.params.itemId, req.body, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+apiRouter.delete('/projects/:projectId/risks/:itemId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    await deleteProjectRisk(req.params.itemId, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+
+// ---- Bütçe Kalemi CRUD ----
+apiRouter.post('/projects/:projectId/cost-items', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    const { title, category, estimatedCost, actualCost, currency } = req.body;
+    if (!title?.trim() || !category?.trim()) return res.status(400).json({ message: 'title ve category zorunludur.' });
+    const id = await addProjectCostItem(req.params.projectId, { title: title.trim(), category: category.trim(), estimatedCost, actualCost, currency }, session.user.id);
+    return res.json({ ok: true, id });
+  } catch (error) { return next(error); }
+});
+apiRouter.patch('/projects/:projectId/cost-items/:itemId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    await updateProjectCostItem(req.params.itemId, req.body, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+apiRouter.delete('/projects/:projectId/cost-items/:itemId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    if (!requireManagementPermission(session.permissions.canManageProjects, res)) return;
+    await deleteProjectCostItem(req.params.itemId, session.user.id);
+    return res.json({ ok: true });
+  } catch (error) { return next(error); }
+});
+
 apiRouter.patch('/projects/:projectId', async (req, res, next) => {
   try {
     const session = await getAuthorizedContext(req, res);
@@ -561,6 +762,12 @@ apiRouter.patch('/projects/:projectId', async (req, res, next) => {
 
     if (!name || !description || !category || !managerId) {
       return res.status(400).json({ message: 'Zorunlu proje alanlari eksik.' });
+    }
+
+    // Status validasyonu
+    const validStatuses = ['Taslak', 'Planlanıyor', 'Aktif', 'Askıda', 'Tamamlandı', 'İptal Edildi'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Geçersiz proje statüsü.' });
     }
 
     await updateProject(projectId, { name, description, category, managerId, startDate, endDate, themeColor, progress, status }, session.user.id);

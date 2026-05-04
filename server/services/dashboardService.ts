@@ -54,11 +54,12 @@ type ProjectRow = RowDataPacket & {
   description: string;
   managerName: string;
   managerAvatar: string;
+  managerId: string;
   progress: number;
   startDate: string | null;
   endDate: string | null;
   memberIds: string | null;
-  status: 'Aktif' | 'Tamamlandı';
+  status: 'Taslak' | 'Planlanıyor' | 'Aktif' | 'Askıda' | 'Tamamlandı' | 'İptal Edildi';
   category: string;
   themeColor: string;
 };
@@ -484,6 +485,7 @@ const getProjects = async (workspaceId: string) => {
       p.theme_color AS themeColor,
       u.name AS managerName,
       u.avatar AS managerAvatar,
+      u.id AS managerId,
       GROUP_CONCAT(DISTINCT pm.user_id ORDER BY pm.user_id) AS memberIds
     FROM projects p
     INNER JOIN users u ON u.id = p.manager_id
@@ -507,6 +509,7 @@ const getProjects = async (workspaceId: string) => {
     description: row.description,
     manager: row.managerName,
     managerAvatar: row.managerAvatar,
+    managerId: row.managerId,
     progress: row.progress,
     daysLeft: calculateDaysLeft(row.endDate),
     team: splitGrouped(row.memberIds),
@@ -597,7 +600,7 @@ const getNotifications = async (userId: string) => {
 
 const getProjectProgress = async (workspaceId: string) => {
   const [rows] = await pool.query<RowDataPacket[]>(
-    `SELECT id, name, progress, theme_color AS color FROM projects WHERE status = 'Aktif' AND workspace_id = ? ORDER BY progress DESC LIMIT 4`,
+    `SELECT id, name, progress, theme_color AS color FROM projects WHERE status IN ('Aktif', 'Planlanıyor') AND workspace_id = ? ORDER BY progress DESC LIMIT 4`,
     [workspaceId]
   );
 
@@ -642,7 +645,7 @@ const buildStats = (projects: Awaited<ReturnType<typeof getProjects>>, tasks: Aw
 
 const buildProjectProgress = (projects: Awaited<ReturnType<typeof getProjects>>) =>
   projects
-    .filter((project) => project.status === 'Aktif')
+    .filter((project) => ['Aktif', 'Planlanıyor'].includes(project.status))
     .sort((left, right) => right.progress - left.progress)
     .slice(0, 4)
     .map((project, index) => ({
@@ -786,10 +789,14 @@ export const createProject = async (payload: {
     const [userRows] = await connection.query<RowDataPacket[]>('SELECT workspace_id FROM users WHERE id = ?', [actorUserId]);
     const workspaceId = userRows[0]?.workspace_id || null;
 
+    // Başlangıç statusünü akıllı belirle: planlama verisi varsa 'Planlanıyor', yoksa 'Taslak'
+    const hasPlanning = payload.stakeholders?.length || payload.requirements?.length || payload.risks?.length || payload.costItems?.length || payload.purpose || payload.problemStatement;
+    const initialStatus = hasPlanning ? 'Planlanıyor' : 'Taslak';
+
     await connection.query(
       `INSERT INTO projects (id, name, description, manager_id, progress, start_date, end_date, status, category, theme_color, workspace_id)
-       VALUES (?, ?, ?, ?, 0, ?, ?, 'Aktif', ?, ?, ?)`,
-      [id, payload.name, payload.description, payload.managerId, payload.startDate || null, payload.endDate || null, payload.category, payload.themeColor || 'bg-indigo-600', workspaceId],
+       VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?)`,
+      [id, payload.name, payload.description, payload.managerId, payload.startDate || null, payload.endDate || null, initialStatus, payload.category, payload.themeColor || 'bg-indigo-600', workspaceId],
     );
     await connection.query('INSERT INTO project_members (project_id, user_id) VALUES (?, ?)', [id, payload.managerId]);
     await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
@@ -991,7 +998,7 @@ export const updateProject = async (projectId: string, payload: {
   endDate?: string;
   themeColor?: string;
   progress?: number;
-  status?: 'Aktif' | 'Tamamlandı';
+  status?: 'Taslak' | 'Planlanıyor' | 'Aktif' | 'Askıda' | 'Tamamlandı' | 'İptal Edildi';
 }, actorUserId: string) => {
   const workspaceId = await getActorWorkspaceId(actorUserId);
   const connection = await pool.getConnection();
@@ -1001,7 +1008,7 @@ export const updateProject = async (projectId: string, payload: {
       `UPDATE projects
        SET name = ?, description = ?, manager_id = ?, category = ?, start_date = ?, end_date = ?, theme_color = ?, progress = ?, status = ?
        WHERE id = ? AND workspace_id = ?`,
-      [payload.name, payload.description, payload.managerId, payload.category, payload.startDate || null, payload.endDate || null, payload.themeColor || 'bg-indigo-600', Math.max(0, Math.min(100, payload.progress ?? 0)), payload.status || 'Aktif', projectId, workspaceId],
+      [payload.name, payload.description, payload.managerId, payload.category, payload.startDate || null, payload.endDate || null, payload.themeColor || 'bg-indigo-600', Math.max(0, Math.min(100, payload.progress ?? 0)), payload.status || 'Taslak', projectId, workspaceId],
     );
     await connection.query('INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)', [projectId, payload.managerId]);
     await connection.query(
@@ -1988,4 +1995,284 @@ export const getProjectTestItems = async (projectId: string, actorUserId: string
     [projectId, workspaceId],
   );
   return rows;
+};
+
+// ---------------------------------------------------------------------------
+// İletişim Planı — CRUD
+// ---------------------------------------------------------------------------
+
+export const getProjectCommunicationPlans = async (projectId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT pc.id, pc.project_id AS projectId, pc.meeting_type AS meetingType,
+     pc.frequency, pc.channel, pc.participants, pc.responsible_user_id AS responsibleUserId,
+     u.name AS responsibleUserName
+     FROM project_communication_plans pc
+     INNER JOIN projects p ON p.id = pc.project_id
+     LEFT JOIN users u ON u.id = pc.responsible_user_id
+     WHERE pc.project_id = ? AND p.workspace_id = ?
+     ORDER BY pc.created_at`,
+    [projectId, workspaceId],
+  );
+  return rows;
+};
+
+export const addProjectCommunicationPlan = async (
+  projectId: string,
+  payload: { meetingType: string; frequency?: string; channel?: string; participants?: string; responsibleUserId?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  // Projenin aktör workspace'ine ait olduğunu doğrula
+  const [projectRows] = await pool.query<RowDataPacket[]>('SELECT id FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1', [projectId, workspaceId]);
+  if (!projectRows.length) throw new Error('Proje bulunamadı veya erişim yetkiniz yok.');
+  const id = createEntityId('PCP');
+  await pool.query(
+    'INSERT INTO project_communication_plans (id, project_id, meeting_type, frequency, channel, participants, responsible_user_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, projectId, payload.meetingType, payload.frequency || null, payload.channel || null, payload.participants || null, payload.responsibleUserId || null],
+  );
+  return id;
+};
+
+export const updateProjectCommunicationPlan = async (
+  planId: string,
+  payload: { meetingType?: string; frequency?: string; channel?: string; participants?: string; responsibleUserId?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [result] = await pool.query<RowDataPacket[]>(
+    `UPDATE project_communication_plans pc
+     INNER JOIN projects p ON p.id = pc.project_id
+     SET pc.meeting_type = COALESCE(?, pc.meeting_type),
+         pc.frequency = COALESCE(?, pc.frequency),
+         pc.channel = COALESCE(?, pc.channel),
+         pc.participants = COALESCE(?, pc.participants),
+         pc.responsible_user_id = COALESCE(?, pc.responsible_user_id)
+     WHERE pc.id = ? AND p.workspace_id = ?`,
+    [payload.meetingType || null, payload.frequency || null, payload.channel || null, payload.participants || null, payload.responsibleUserId || null, planId, workspaceId],
+  );
+  return result;
+};
+
+export const deleteProjectCommunicationPlan = async (planId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [result] = await pool.query<RowDataPacket[]>(
+    `DELETE pc FROM project_communication_plans pc
+     INNER JOIN projects p ON p.id = pc.project_id
+     WHERE pc.id = ? AND p.workspace_id = ?`,
+    [planId, workspaceId],
+  );
+  return result;
+};
+
+// ---------------------------------------------------------------------------
+// Paydaş — CRUD (Add / Update / Delete)
+// ---------------------------------------------------------------------------
+
+export const addProjectStakeholder = async (
+  projectId: string,
+  payload: { name: string; role: string; interest?: string; power?: string; expectation?: string; communicationMethod?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [projectRows] = await pool.query<RowDataPacket[]>('SELECT id FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1', [projectId, workspaceId]);
+  if (!projectRows.length) throw new Error('Proje bulunamadı veya erişim yetkiniz yok.');
+  const id = createEntityId('PSH');
+  await pool.query(
+    'INSERT INTO project_stakeholders (id, project_id, name, role, interest, power, expectation, communication_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, projectId, payload.name, payload.role, payload.interest || 'Orta', payload.power || 'Orta', payload.expectation || null, payload.communicationMethod || null],
+  );
+  return id;
+};
+
+export const updateProjectStakeholder = async (
+  stakeholderId: string,
+  payload: { name?: string; role?: string; interest?: string; power?: string; expectation?: string; communicationMethod?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  await pool.query(
+    `UPDATE project_stakeholders ps
+     INNER JOIN projects p ON p.id = ps.project_id
+     SET ps.name = COALESCE(?, ps.name),
+         ps.role = COALESCE(?, ps.role),
+         ps.interest = COALESCE(?, ps.interest),
+         ps.power = COALESCE(?, ps.power),
+         ps.expectation = COALESCE(?, ps.expectation),
+         ps.communication_method = COALESCE(?, ps.communication_method)
+     WHERE ps.id = ? AND p.workspace_id = ?`,
+    [payload.name || null, payload.role || null, payload.interest || null, payload.power || null, payload.expectation ?? null, payload.communicationMethod ?? null, stakeholderId, workspaceId],
+  );
+};
+
+export const deleteProjectStakeholder = async (stakeholderId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  await pool.query(
+    `DELETE ps FROM project_stakeholders ps
+     INNER JOIN projects p ON p.id = ps.project_id
+     WHERE ps.id = ? AND p.workspace_id = ?`,
+    [stakeholderId, workspaceId],
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Gereksinim — CRUD (Add / Update / Delete)
+// ---------------------------------------------------------------------------
+
+export const addProjectRequirement = async (
+  projectId: string,
+  payload: { title: string; description: string; type?: string; priority?: string; difficulty?: number; businessValue?: number; acceptanceCriteria?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [projectRows] = await pool.query<RowDataPacket[]>('SELECT id FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1', [projectId, workspaceId]);
+  if (!projectRows.length) throw new Error('Proje bulunamadı veya erişim yetkiniz yok.');
+  const id = createEntityId('PRQ');
+  await pool.query(
+    'INSERT INTO project_requirements (id, project_id, title, description, type, priority, difficulty, business_value, acceptance_criteria) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, projectId, payload.title, payload.description, payload.type || 'İşlevsel', payload.priority || 'Must', payload.difficulty ?? 3, payload.businessValue ?? 3, payload.acceptanceCriteria || null],
+  );
+  return id;
+};
+
+export const updateProjectRequirement = async (
+  requirementId: string,
+  payload: { title?: string; description?: string; type?: string; priority?: string; difficulty?: number; businessValue?: number; acceptanceCriteria?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  await pool.query(
+    `UPDATE project_requirements pr
+     INNER JOIN projects p ON p.id = pr.project_id
+     SET pr.title = COALESCE(?, pr.title),
+         pr.description = COALESCE(?, pr.description),
+         pr.type = COALESCE(?, pr.type),
+         pr.priority = COALESCE(?, pr.priority),
+         pr.difficulty = COALESCE(?, pr.difficulty),
+         pr.business_value = COALESCE(?, pr.business_value),
+         pr.acceptance_criteria = COALESCE(?, pr.acceptance_criteria)
+     WHERE pr.id = ? AND p.workspace_id = ?`,
+    [payload.title || null, payload.description || null, payload.type || null, payload.priority || null, payload.difficulty ?? null, payload.businessValue ?? null, payload.acceptanceCriteria ?? null, requirementId, workspaceId],
+  );
+};
+
+export const deleteProjectRequirement = async (requirementId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  await pool.query(
+    `DELETE pr FROM project_requirements pr
+     INNER JOIN projects p ON p.id = pr.project_id
+     WHERE pr.id = ? AND p.workspace_id = ?`,
+    [requirementId, workspaceId],
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Risk — CRUD (Add / Update / Delete)
+// ---------------------------------------------------------------------------
+
+export const addProjectRisk = async (
+  projectId: string,
+  payload: { title: string; category: string; probability?: number; impact?: number; mitigation?: string; contingency?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [projectRows] = await pool.query<RowDataPacket[]>('SELECT id FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1', [projectId, workspaceId]);
+  if (!projectRows.length) throw new Error('Proje bulunamadı veya erişim yetkiniz yok.');
+  const id = createEntityId('PRS');
+  const prob = Math.max(1, Math.min(5, payload.probability ?? 3));
+  const imp = Math.max(1, Math.min(5, payload.impact ?? 3));
+  await pool.query(
+    'INSERT INTO project_risks (id, project_id, title, category, probability, impact, score, priority, mitigation, contingency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, projectId, payload.title, payload.category, prob, imp, prob * imp, prob * imp >= 15 ? 'Yüksek' : prob * imp >= 8 ? 'Orta' : 'Düşük', payload.mitigation || null, payload.contingency || null],
+  );
+  return id;
+};
+
+export const updateProjectRisk = async (
+  riskId: string,
+  payload: { title?: string; category?: string; probability?: number; impact?: number; mitigation?: string; contingency?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const prob = payload.probability != null ? Math.max(1, Math.min(5, payload.probability)) : null;
+  const imp = payload.impact != null ? Math.max(1, Math.min(5, payload.impact)) : null;
+  // Eğer olasılık veya etki güncellendiyse score ve priority'yi de güncelle
+  let scoreClause = '';
+  const params: (string | number | null)[] = [payload.title || null, payload.category || null, prob, imp, payload.mitigation ?? null, payload.contingency ?? null];
+  if (prob != null && imp != null) {
+    scoreClause = ', pr.score = ?, pr.priority = ?';
+    params.push(prob * imp, prob * imp >= 15 ? 'Yüksek' : prob * imp >= 8 ? 'Orta' : 'Düşük');
+  }
+  params.push(riskId, workspaceId);
+  await pool.query(
+    `UPDATE project_risks pr
+     INNER JOIN projects p ON p.id = pr.project_id
+     SET pr.title = COALESCE(?, pr.title),
+         pr.category = COALESCE(?, pr.category),
+         pr.probability = COALESCE(?, pr.probability),
+         pr.impact = COALESCE(?, pr.impact),
+         pr.mitigation = COALESCE(?, pr.mitigation),
+         pr.contingency = COALESCE(?, pr.contingency)${scoreClause}
+     WHERE pr.id = ? AND p.workspace_id = ?`,
+    params,
+  );
+};
+
+export const deleteProjectRisk = async (riskId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  await pool.query(
+    `DELETE pr FROM project_risks pr
+     INNER JOIN projects p ON p.id = pr.project_id
+     WHERE pr.id = ? AND p.workspace_id = ?`,
+    [riskId, workspaceId],
+  );
+};
+
+// ---------------------------------------------------------------------------
+// Bütçe Kalemi — CRUD (Add / Update / Delete)
+// ---------------------------------------------------------------------------
+
+export const addProjectCostItem = async (
+  projectId: string,
+  payload: { title: string; category: string; estimatedCost?: number; actualCost?: number; currency?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [projectRows] = await pool.query<RowDataPacket[]>('SELECT id FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1', [projectId, workspaceId]);
+  if (!projectRows.length) throw new Error('Proje bulunamadı veya erişim yetkiniz yok.');
+  const id = createEntityId('PCI');
+  await pool.query(
+    'INSERT INTO project_cost_items (id, project_id, title, category, estimated_cost, actual_cost, currency) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, projectId, payload.title, payload.category, payload.estimatedCost ?? 0, payload.actualCost ?? 0, payload.currency || 'TRY'],
+  );
+  return id;
+};
+
+export const updateProjectCostItem = async (
+  costItemId: string,
+  payload: { title?: string; category?: string; estimatedCost?: number; actualCost?: number; currency?: string },
+  actorUserId: string,
+) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  await pool.query(
+    `UPDATE project_cost_items pci
+     INNER JOIN projects p ON p.id = pci.project_id
+     SET pci.title = COALESCE(?, pci.title),
+         pci.category = COALESCE(?, pci.category),
+         pci.estimated_cost = COALESCE(?, pci.estimated_cost),
+         pci.actual_cost = COALESCE(?, pci.actual_cost),
+         pci.currency = COALESCE(?, pci.currency)
+     WHERE pci.id = ? AND p.workspace_id = ?`,
+    [payload.title || null, payload.category || null, payload.estimatedCost ?? null, payload.actualCost ?? null, payload.currency || null, costItemId, workspaceId],
+  );
+};
+
+export const deleteProjectCostItem = async (costItemId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  await pool.query(
+    `DELETE pci FROM project_cost_items pci
+     INNER JOIN projects p ON p.id = pci.project_id
+     WHERE pci.id = ? AND p.workspace_id = ?`,
+    [costItemId, workspaceId],
+  );
 };

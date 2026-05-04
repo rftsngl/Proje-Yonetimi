@@ -536,6 +536,12 @@ export default function App() {
     setIsCreateProjectModalOpen(true);
   };
 
+  const handleUpdateProjectInline = async (projectId: string, payload: import('./types').UpdateProjectPayload) => {
+    const updatedData = await updateProject(projectId, payload);
+    setData(updatedData);
+    setSelectedProject(updatedData.projects.find((p) => p.id === projectId) || null);
+  };
+
   const handleDeleteProject = (project: Project) => {
     setConfirmModal({
       isOpen: true,
@@ -1279,6 +1285,7 @@ export default function App() {
         onOpenWbs={handleOpenProjectWbs}
         onAddMember={canManageTeam ? handleAddProjectMember : undefined}
         onGenerateReport={(projectId) => handleGenerateReport(projectId)}
+        onUpdateProject={canManageProjects ? handleUpdateProjectInline : undefined}
       />
 
       <WBSDiagram
