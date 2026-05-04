@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useEffect, useRef, useState } from 'react';
-import { ProjectProgress, Stat, Task, User } from '../types';
+import { Notification, ProjectProgress, Stat, Task, User } from '../types';
 import { resolveAvatarUrl } from '../lib/avatar';
 
 interface DashboardProps {
@@ -29,6 +29,7 @@ interface DashboardProps {
   onRefresh?: () => Promise<any>;
   onGenerateReport?: () => void;
   onTaskClick?: (taskId: string) => void;
+  activities?: Notification[];
 }
 
 const iconMap: Record<string, any> = {
@@ -46,7 +47,8 @@ export default function Dashboard({
   onNavigateFromStat, 
   onRefresh, 
   onGenerateReport,
-  onTaskClick 
+  onTaskClick,
+  activities = []
 }: DashboardProps) {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState<string | null>(null);
@@ -336,38 +338,50 @@ export default function Dashboard({
             </button>
             {renderDropdown('activity')}
           </div>
-          <div className="flex-1 space-y-6 p-6">
-            <div className="flex gap-4">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-indigo-50">
-                <MessageSquare className="h-5 w-5 text-indigo-600" />
+          <div className="flex-1 overflow-y-auto">
+            {activities.length > 0 ? (
+              <div className="divide-y divide-slate-50">
+                {activities.map((activity) => (
+                  <div key={activity.id} className="group flex gap-4 p-4 transition-colors hover:bg-slate-50">
+                    <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${
+                      activity.type === 'task' ? 'bg-indigo-50 text-indigo-600' :
+                      activity.type === 'project' ? 'bg-emerald-50 text-emerald-600' :
+                      activity.type === 'mention' ? 'bg-amber-50 text-amber-600' :
+                      'bg-slate-50 text-slate-600'
+                    }`}>
+                      {activity.type === 'task' ? <CheckCircle2 className="h-5 w-5" /> :
+                       activity.type === 'project' ? <Briefcase className="h-5 w-5" /> :
+                       activity.type === 'mention' ? <MessageSquare className="h-5 w-5" /> :
+                       <AlertCircle className="h-5 w-5" />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-slate-900 truncate group-hover:text-indigo-600 transition-colors">
+                        {activity.title}
+                      </p>
+                      <p className="mt-0.5 text-xs text-slate-500 line-clamp-1">
+                        {activity.description}
+                      </p>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <Clock className="h-3 w-3 text-slate-400" />
+                        <span className="text-[10px] font-medium text-slate-400">{activity.time}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="text-sm text-slate-600">
-                  <span className="font-bold text-slate-900">{currentUser.name}</span> için görünür yorum ve görev akışı burada özetlenir.
-                </p>
-                <p className="mt-1 text-xs font-medium text-slate-400">Canlı rol görünümü</p>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+                <div className="rounded-full bg-slate-50 p-4">
+                  <Sparkles className="h-8 w-8 text-slate-200" />
+                </div>
+                <p className="mt-4 text-sm font-medium text-slate-500">Henüz bir aktivite bulunmuyor.</p>
               </div>
-            </div>
-            <div className="flex gap-4">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-emerald-50">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Tamamlanan görevler ve proje ilerlemeleri yetkine göre filtrelenir.</p>
-                <p className="mt-1 text-xs font-medium text-slate-400">Rol tabanlı görünüm</p>
-              </div>
-            </div>
-            <div className="flex gap-4">
-              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-amber-50">
-                <UserPlus className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Ekip ve proje aksiyonları yalnızca yetkili rollerde aktif olur.</p>
-                <p className="mt-1 text-xs font-medium text-slate-400">Güvenli izin modeli</p>
-              </div>
-            </div>
+            )}
           </div>
-          <button className="w-full border-t border-slate-50 py-4 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50">
+          <button 
+            onClick={() => onNavigateFromStat?.('tasks')}
+            className="w-full border-t border-slate-50 py-4 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-50 hover:text-indigo-600"
+          >
             Tüm Aktiviteyi Gör
           </button>
         </motion.div>

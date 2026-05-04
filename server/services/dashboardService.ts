@@ -1014,6 +1014,7 @@ export const createTask = async (payload: {
     );
     for (const assigneeId of payload.assigneeIds) {
       await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [id, assigneeId]);
+      await connection.query('INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)', [payload.projectId, assigneeId]);
     }
     await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
@@ -1079,6 +1080,7 @@ export const updateTask = async (taskId: string, payload: {
     await connection.query('DELETE FROM task_assignees WHERE task_id = ?', [taskId]);
     for (const assigneeId of payload.assigneeIds) {
       await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [taskId, assigneeId]);
+      await connection.query('INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)', [payload.projectId, assigneeId]);
     }
     await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
@@ -1509,13 +1511,14 @@ export const addTaskAssignee = async (taskId: string, userId: string, actorUserI
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT t.title FROM tasks t INNER JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.workspace_id = ? LIMIT 1', [taskId, workspaceId]);
+    const [taskRows] = await connection.query<RowDataPacket[]>('SELECT t.title, t.project_id AS projectId FROM tasks t INNER JOIN projects p ON p.id = t.project_id WHERE t.id = ? AND p.workspace_id = ? LIMIT 1', [taskId, workspaceId]);
     const [userRows] = await connection.query<RowDataPacket[]>('SELECT name FROM users WHERE id = ? AND workspace_id = ? LIMIT 1', [userId, workspaceId]);
     if (!taskRows.length || !userRows.length) {
       await connection.rollback();
       return false;
     }
     await connection.query('INSERT IGNORE INTO task_assignees (task_id, user_id) VALUES (?, ?)', [taskId, userId]);
+    await connection.query('INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)', [taskRows[0].projectId, userId]);
     await connection.query('INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)', [
       createEntityId('NTF'),
       actorUserId,

@@ -1132,6 +1132,7 @@ export default function App() {
               const task = data.tasks.find(t => t.id === taskId);
               if (task) handleTaskClick(task);
             }}
+            activities={data.notifications.slice(0, 5)}
           />
         );
       case 'projects':
