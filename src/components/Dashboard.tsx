@@ -148,10 +148,14 @@ export default function Dashboard({
       transition={{ duration: 0.4 }} 
       className="space-y-8"
     >
-      <div>
+      <motion.div
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+      >
         <h1 className="text-2xl font-bold text-slate-900">Hoş geldin, {currentUser.name.split(' ')[0]}</h1>
         <p className="mt-1 text-slate-500">{currentUser.role} rolüne göre görünümün ve özet verilerin dinamik olarak hazırlandı.</p>
-      </div>
+      </motion.div>
 
       <motion.div 
         className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4"
@@ -209,7 +213,7 @@ export default function Dashboard({
             {renderDropdown('tasks')}
           </div>
           <motion.div 
-            className="flex-1 divide-y divide-slate-50"
+            className="flex-1 divide-y divide-slate-50 overflow-x-hidden"
             initial="hidden" animate="visible"
             variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
           >
@@ -219,6 +223,7 @@ export default function Dashboard({
                   hidden: { opacity: 0, x: -20 }, 
                   visible: { opacity: 1, x: 0, transition: { ease: 'easeOut' } } 
                 }}
+                whileHover={{ x: 4, backgroundColor: 'rgba(248, 250, 252, 1)' }}
                 key={task.id} 
                 onClick={() => onTaskClick?.(task.id)}
                 className="group flex cursor-pointer items-center justify-between p-4 transition-colors hover:bg-slate-50"
@@ -311,13 +316,15 @@ export default function Dashboard({
                 <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Aktif Proje</p>
                 <p className="mt-1 text-sm font-bold text-slate-900">{projectProgress.length} Devam Eden</p>
               </div>
-              <button 
+              <motion.button 
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={onGenerateReport}
                 className="flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-700 shadow-sm transition-colors hover:bg-indigo-100"
               >
                 <Sparkles className="h-3.5 w-3.5" />
                 Yapay Zeka Raporu
-              </button>
+              </motion.button>
             </div>
           </div>
         </motion.div>
@@ -338,12 +345,24 @@ export default function Dashboard({
             </button>
             {renderDropdown('activity')}
           </div>
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden">
             {activities.length > 0 ? (
-              <div className="divide-y divide-slate-50">
-                {activities.map((activity) => (
-                  <div key={activity.id} className="group flex gap-4 p-4 transition-colors hover:bg-slate-50">
-                    <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${
+              <motion.div 
+                className="divide-y divide-slate-50"
+                initial="hidden" animate="visible"
+                variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
+              >
+                {activities.slice(0, 4).map((activity) => (
+                  <motion.div 
+                    variants={{ 
+                      hidden: { opacity: 0, x: 20 }, 
+                      visible: { opacity: 1, x: 0, transition: { ease: 'easeOut' } } 
+                    }}
+                    whileHover={{ x: 4, backgroundColor: 'rgba(248, 250, 252, 1)' }}
+                    key={activity.id} 
+                    className="group flex gap-4 p-4 transition-colors hover:bg-slate-50 cursor-default"
+                  >
+                    <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl transition-transform group-hover:scale-110 ${
                       activity.type === 'task' ? 'bg-indigo-50 text-indigo-600' :
                       activity.type === 'project' ? 'bg-emerald-50 text-emerald-600' :
                       activity.type === 'mention' ? 'bg-amber-50 text-amber-600' :
@@ -366,9 +385,9 @@ export default function Dashboard({
                         <span className="text-[10px] font-medium text-slate-400">{activity.time}</span>
                       </div>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center p-8 text-center">
                 <div className="rounded-full bg-slate-50 p-4">

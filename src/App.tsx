@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { LayoutGrid, List, Plus, Filter, Briefcase, ChevronDown, Check } from 'lucide-react';
+import { LayoutGrid, List, Plus, Filter, Briefcase, ChevronDown, Check, X } from 'lucide-react';
 import AuthScreen from './components/AuthScreen';
 import Layout from './components/Layout';
 import Dashboard from './components/Dashboard';
@@ -100,6 +100,10 @@ export default function App() {
   const [pendingDeleteNotification, setPendingDeleteNotification] = useState<Notification | null>(null);
   const pendingDeleteRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Toast State
+  const [activeToast, setActiveToast] = useState<{ id: number; message: string; subMessage?: string } | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // Confirm Modal State
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -180,6 +184,25 @@ export default function App() {
   }, []);
 
   const visibleTabs = useMemo(() => getVisibleTabs(data.permissions), [data.permissions]);
+
+  useEffect(() => {
+    if (taskProjectFilter) {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      
+      setActiveToast({
+        id: Date.now(),
+        message: `${taskProjectFilter.name} görevleri gösteriliyor`,
+        subMessage: 'Filtre uygulandı.'
+      });
+      
+      toastTimeoutRef.current = setTimeout(() => {
+        setActiveToast(null);
+      }, 3000);
+    }
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
+  }, [taskProjectFilter]);
 
   useEffect(() => {
     if (isAuthenticated && visibleTabs.length && !visibleTabs.some((tab) => tab.id === activeTab)) {
@@ -901,43 +924,43 @@ export default function App() {
   }
 
   const renderTasksContent = () => (
-    <div className="flex gap-6">
+    <div className="flex gap-4">
       {/* Sol Panel - Proje Kapsam Seçici */}
-      <div className="w-72 flex-shrink-0">
+      <div className="w-60 flex-shrink-0">
         <div className="sticky top-24 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-100 px-5 py-4">
+          <div className="border-b border-slate-100 px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50">
-                <Briefcase className="h-5 w-5 text-indigo-600" />
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-50 shrink-0">
+                <Briefcase className="h-4 w-4 text-indigo-600" />
               </div>
-              <div>
-                <p className="text-sm font-bold uppercase tracking-wider text-slate-400">Proje Kapsamı</p>
-                <p className="text-xs text-slate-500">{data.projects.length} proje mevcut</p>
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Proje Kapsamı</p>
+                <p className="text-xs text-slate-500 truncate">{data.projects.length} proje mevcut</p>
               </div>
             </div>
           </div>
-          <div className="max-h-[calc(100vh-14rem)] overflow-y-auto p-3">
+          <div className="max-h-[calc(100vh-14rem)] overflow-y-auto p-2">
             <button
               onClick={() => setTaskProjectFilter(null)}
-              className={`mb-1.5 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition-all ${
+              className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition-all ${
                 !taskProjectFilter
                   ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-100'
                   : 'text-slate-600 hover:bg-slate-50'
               }`}
             >
-              <div className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold ${
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
                 !taskProjectFilter ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'
               }`}>
                 ✦
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold">Tüm Projeler</p>
-                <p className="text-xs text-slate-400">{data.tasks.length} görev</p>
+                <p className="text-[10px] text-slate-400">{data.tasks.length} görev</p>
               </div>
-              {!taskProjectFilter && <Check className="h-5 w-5 flex-shrink-0 text-indigo-500" />}
+              {!taskProjectFilter && <Check className="h-4 w-4 shrink-0 text-indigo-500" />}
             </button>
 
-            <div className="my-2.5 h-px bg-slate-100" />
+            <div className="my-2 h-px bg-slate-100" />
 
             {data.projects.map((p) => {
               const projectTaskCount = data.tasks.filter(t => t.projectId === p.id).length;
@@ -945,22 +968,22 @@ export default function App() {
                 <button
                   key={p.id}
                   onClick={() => setTaskProjectFilter(p)}
-                  className={`mb-1.5 flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm transition-all ${
+                  className={`mb-1 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition-all ${
                     taskProjectFilter?.id === p.id
                       ? 'bg-indigo-50 text-indigo-700 shadow-sm ring-1 ring-indigo-100'
                       : 'text-slate-600 hover:bg-slate-50'
                   }`}
                 >
-                  <div className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-bold ${
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl text-xs font-bold ${
                     taskProjectFilter?.id === p.id ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'
                   }`}>
                     {p.name.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-bold">{p.name}</p>
-                    <p className="text-xs text-slate-400">{projectTaskCount} görev</p>
+                    <p className="text-[10px] text-slate-400">{projectTaskCount} görev</p>
                   </div>
-                  {taskProjectFilter?.id === p.id && <Check className="h-5 w-5 flex-shrink-0 text-indigo-500" />}
+                  {taskProjectFilter?.id === p.id && <Check className="h-4 w-4 shrink-0 text-indigo-500" />}
                 </button>
               );
             })}
@@ -970,24 +993,6 @@ export default function App() {
 
       {/* Sağ Panel - Görev İçeriği */}
       <div className="min-w-0 flex-1 space-y-6">
-        {taskProjectFilter && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div>
-              <p className="text-sm font-bold text-indigo-700">{taskProjectFilter.name} görevleri gösteriliyor</p>
-              <p className="text-xs text-indigo-600">Filtreyi temizlersen tüm görev listesine geri dönersin.</p>
-            </div>
-            <button
-              onClick={() => setTaskProjectFilter(null)}
-              className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-indigo-600 transition-colors hover:bg-indigo-100"
-            >
-              Filtreyi Temizle
-            </button>
-          </motion.div>
-        )}
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1040,6 +1045,7 @@ export default function App() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3 }}
+              className="overflow-hidden"
             >
               <KanbanBoard
                 tasks={filteredTasks}
@@ -1058,6 +1064,7 @@ export default function App() {
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: 20 }}
               transition={{ duration: 0.3 }}
+              className="overflow-hidden"
             >
               <TaskList
                 tasks={listTasks}
@@ -1338,6 +1345,33 @@ export default function App() {
         error={reportError}
         title={reportTitle}
       />
+
+      {/* Global Toast Notification */}
+      <AnimatePresence>
+        {activeToast && (
+          <motion.div
+            key={activeToast.id}
+            initial={{ opacity: 0, y: -20, x: 20 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, scale: 0.9, transition: { duration: 0.2 } }}
+            className="fixed top-6 right-6 z-[9999] flex min-w-[300px] items-center gap-4 rounded-2xl border border-indigo-100 bg-white p-4 shadow-2xl shadow-indigo-100/50"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50">
+              <Check className="h-5 w-5 text-indigo-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-bold text-slate-900">{activeToast.message}</p>
+              {activeToast.subMessage && <p className="text-xs text-slate-500">{activeToast.subMessage}</p>}
+            </div>
+            <button 
+              onClick={() => setActiveToast(null)}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </Layout>
   );
 }

@@ -34,7 +34,7 @@ export default function Layout({
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen overflow-x-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-gray-50">
       {/* Sidebar */}
       <Sidebar 
         isOpen={isSidebarOpen} 
@@ -58,7 +58,7 @@ export default function Layout({
           onLogout={onLogout}
         />
         
-        <main className="flex-1 overflow-x-hidden p-4 sm:p-5 lg:p-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-5 lg:p-6">
           <div className="mx-auto min-w-0">
             <AnimatePresence mode="wait">
               <motion.div

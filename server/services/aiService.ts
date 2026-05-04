@@ -62,8 +62,72 @@ export const generateProjectReport = async ({ projectId, workspaceId }: ProjectR
     throw new Error('Raporlanacak aktif proje bulunamadı.');
   }
 
-  // Görev detaylarını çek (her proje için)
   const projectIds = projectsData.map(p => p.id);
+  
+  // Detaylı planlama bilgilerini çek
+  const [planningRows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM project_planning_details WHERE project_id IN (?)`,
+    [projectIds]
+  );
+  const planningMap = new Map(planningRows.map(r => [r.project_id, r]));
+
+  // Gereksinimleri çek
+  const [requirementRows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM project_requirements WHERE project_id IN (?) ORDER BY FIELD(priority, 'Must', 'Should', 'Could', 'Won\\'t')`,
+    [projectIds]
+  );
+  const requirementsMap = new Map<string, any[]>();
+  requirementRows.forEach(r => {
+    if (!requirementsMap.has(r.project_id)) requirementsMap.set(r.project_id, []);
+    requirementsMap.get(r.project_id)!.push(r);
+  });
+
+  // Riskleri çek
+  const [riskRows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM project_risks WHERE project_id IN (?) ORDER BY score DESC`,
+    [projectIds]
+  );
+  const risksMap = new Map<string, any[]>();
+  riskRows.forEach(r => {
+    if (!risksMap.has(r.project_id)) risksMap.set(r.project_id, []);
+    risksMap.get(r.project_id)!.push(r);
+  });
+
+  // Paydaşları çek
+  const [stakeholderRows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM project_stakeholders WHERE project_id IN (?)`,
+    [projectIds]
+  );
+  const stakeholdersMap = new Map<string, any[]>();
+  stakeholderRows.forEach(s => {
+    if (!stakeholdersMap.has(s.project_id)) stakeholdersMap.set(s.project_id, []);
+    stakeholdersMap.get(s.project_id)!.push(s);
+  });
+
+  // Bütçeyi çek
+  const [budgetRows] = await pool.query<RowDataPacket[]>(
+    `SELECT * FROM project_cost_items WHERE project_id IN (?)`,
+    [projectIds]
+  );
+  const budgetMap = new Map<string, any[]>();
+  budgetRows.forEach(b => {
+    if (!budgetMap.has(b.project_id)) budgetMap.set(b.project_id, []);
+    budgetMap.get(b.project_id)!.push(b);
+  });
+
+  // İletişim planını çek
+  const [commRows] = await pool.query<RowDataPacket[]>(
+    `SELECT cp.*, u.name as responsible_name 
+     FROM project_communication_plans cp
+     LEFT JOIN users u ON cp.responsible_user_id = u.id
+     WHERE cp.project_id IN (?)`,
+    [projectIds]
+  );
+  const commMap = new Map<string, any[]>();
+  commRows.forEach(c => {
+    if (!commMap.has(c.project_id)) commMap.set(c.project_id, []);
+    commMap.get(c.project_id)!.push(c);
+  });
   const [taskRows] = await pool.query<RowDataPacket[]>(
     `SELECT t.title, t.status, t.priority, t.due_date, t.project_id,
             GROUP_CONCAT(u.name SEPARATOR ', ') as assignees
@@ -94,7 +158,17 @@ export const generateProjectReport = async ({ projectId, workspaceId }: ProjectR
       ).join('\n')
       : '  (Henüz görev tanımlanmamış)';
 
-    return `## ${p.name}
+    const planning = planningMap.get(p.id);
+    const reqs = requirementsMap.get(p.id) || [];
+    const risks = risksMap.get(p.id) || [];
+    const stakeholders = stakeholdersMap.get(p.id) || [];
+    const budget = budgetMap.get(p.id) || [];
+    const comms = commMap.get(p.id) || [];
+
+    const totalEstimated = budget.reduce((sum, b) => sum + Number(b.estimated_cost), 0);
+    const totalActual = budget.reduce((sum, b) => sum + Number(b.actual_cost), 0);
+
+    return `## PROJE: ${p.name}
 - Proje ID: ${p.id}
 - Durum: ${p.status}
 - Kategori: ${p.category}
@@ -105,6 +179,29 @@ export const generateProjectReport = async ({ projectId, workspaceId }: ProjectR
 - Bitiş Tarihi: ${formatDate(p.end_date)} (${calcDaysLeft(p.end_date)})
 - Toplam Görev: ${p.total_tasks} (Tamamlanan: ${p.completed_tasks}, Devam Eden: ${p.in_progress_tasks}, Yapılacak: ${p.todo_tasks}, Geciken: ${p.overdue_tasks})
 - Açıklama: ${p.description || 'Açıklama girilmemiş'}
+
+${planning ? `### STRATEJİK PLANLAMA:
+- Problem Tanımı: ${planning.problem_statement || '-'}
+- Kapsam İçi: ${planning.in_scope || '-'}
+- Kapsam Dışı: ${planning.out_of_scope || '-'}
+- Fizibilite Skoru: ${planning.feasibility_score}/100` : ''}
+
+### GEREKSİNİMLER (MoSCoW):
+${reqs.length > 0 ? reqs.map(r => `  - [${r.priority}] ${r.title}: ${r.status}`).join('\n') : '  (Henüz gereksinim girilmemiş)'}
+
+### RİSK KAYDI:
+${risks.length > 0 ? risks.map(r => `  - ${r.title} (Skor: ${r.score}, Olasılık: ${r.probability}, Etki: ${r.impact}) - Önem: ${r.priority}`).join('\n') : '  (Henüz risk tanımlanmamış)'}
+
+### PAYDAŞ ANALİZİ:
+${stakeholders.length > 0 ? stakeholders.map(s => `  - ${s.name} (${s.role}) - Güç: ${s.power}, İlgi: ${s.interest}`).join('\n') : '  (Henüz paydaş girilmemiş)'}
+
+### BÜTÇE VE MALİYET:
+- Toplam Tahmini: ${totalEstimated.toLocaleString('tr-TR')} TRY
+- Toplam Harcanan: ${totalActual.toLocaleString('tr-TR')} TRY
+- Bütçe Sapması: %${totalEstimated > 0 ? (((totalActual - totalEstimated) / totalEstimated) * 100).toFixed(1) : 0}
+
+### İLETİŞİM PLANI:
+${comms.length > 0 ? comms.map(c => `  - ${c.meeting_type} (${c.frequency}, ${c.channel}) - Sorumlu: ${c.responsible_name || 'Atanmamış'}`).join('\n') : '  (Henüz iletişim planı yok)'}
 
 Görev Listesi:
 ${taskList}`;
@@ -123,14 +220,16 @@ RAPORLAMA KURALLARI:
 
 ${isSingleProject ? `TEK PROJE RAPORU FORMATI:
 - 📋 Proje Özeti (ad, kategori, yönetici, ekip büyüklüğü)
-- 📊 İlerleme Durumu (ilerleme yüzdesi analizi ve kalan süre)
-- ✅ Görev Analizi (tamamlanan, devam eden, geciken görevleri listele)
-- ⚠️ Risk ve Dikkat Edilecek Noktalar (geciken görevler, düşük ilerleme vb.)
+- 📊 İlerleme ve Bütçe Durumu (ilerleme yüzdesi analizi, bütçe sapması ve kalan süre)
+- 📝 Kapsam ve Strateji (planlama detaylarının özeti)
+- ✅ Görev ve Gereksinim Analizi (MoSCoW önceliklerine göre ilerleme)
+- ⚠️ Risk ve Paydaş Değerlendirmesi (en kritik riskler ve paydaşların beklentileri)
+- 💬 İletişim ve Koordinasyon (iletişim planının etkinliği)
 - 💡 Öneriler (somut, uygulanabilir adımlar)` : `ÇOKLU PROJE RAPORU FORMATI:
-- 📋 Genel Durum Özeti (kaç proje aktif, ortalama ilerleme)
-- 📊 Proje Bazlı Kısa Değerlendirme (her proje için 2-3 cümle)
-- ⚠️ Kritik Noktalar (geciken projeler, risk taşıyan projeler)
-- 💡 Genel Öneriler`}`;
+- 📋 Genel Durum Özeti (kaç proje aktif, ortalama ilerleme, toplam bütçe kullanımı)
+- 📊 Proje Bazlı Kısa Değerlendirme (her proje için 2-3 cümlelik kapsamlı özet)
+- ⚠️ Kritik Noktalar (geciken projeler, yüksek bütçe sapmaları, kritik riskler)
+- 💡 Genel Stratejik Öneriler`}`;
 
   const userPrompt = `Aşağıdaki proje verilerini analiz ederek bir durum raporu oluştur:\n\n${promptContext}`;
 

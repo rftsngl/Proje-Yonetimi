@@ -295,7 +295,7 @@ export interface CreateProjectPayload {
 
   // WBS
   createDefaultWbsTasks?: boolean;
-  selectedWbsTemplate?: 'software-default' | 'empty';
+  selectedWbsTemplate?: 'software' | 'marketing' | 'infrastructure' | 'empty';
 }
 
 export interface UpdateProjectPayload extends Omit<CreateProjectPayload,

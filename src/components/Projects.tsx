@@ -30,18 +30,28 @@ export default function Projects({
   const [viewMode, setViewMode] = useState<'cards' | 'gantt'>('cards');
   const [zoom, setZoom] = useState<'day' | 'week' | 'month'>('week');
   const [expandedProjectIds, setExpandedProjectIds] = useState<string[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('Tümü');
+  const [selectedManagerId, setSelectedManagerId] = useState<string>('Tümü');
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+
+  const managers = ['Tümü', ...Array.from(new Set(projects.map((p) => p.managerId))).map(id => ({ id, name: projects.find(p => p.managerId === id)?.manager }))];
 
   const filteredProjects = projects.filter(
     (project) => {
       const matchSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           project.description.toLowerCase().includes(searchQuery.toLowerCase());
       
+      const matchCategory = selectedCategory === 'Tümü' || project.category === selectedCategory;
+      const matchManager = selectedManagerId === 'Tümü' || project.managerId === selectedManagerId;
+
       const isActive = ['Taslak', 'Planlanıyor', 'Aktif', 'Askıda'].includes(project.status);
       const isCompleted = ['Tamamlandı', 'İptal Edildi'].includes(project.status);
 
-      if (activeTab === 'Aktif') return isActive && matchSearch;
-      if (activeTab === 'Tamamlandı') return isCompleted && matchSearch;
-      return matchSearch; // Tümü
+      let statusMatch = true;
+      if (activeTab === 'Aktif') statusMatch = isActive;
+      else if (activeTab === 'Tamamlandı') statusMatch = isCompleted;
+
+      return matchSearch && matchCategory && matchManager && statusMatch;
     }
   );
 
@@ -160,34 +170,30 @@ export default function Projects({
       <div className="flex flex-col gap-4 rounded-2xl border border-slate-100 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex w-fit items-center gap-1 rounded-xl bg-slate-100 p-1">
-            <button
-              onClick={() => setActiveTab('Tümü')}
-              className={`rounded-lg px-4 py-2 text-sm font-bold transition-all ${
-                activeTab === 'Tümü' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Tümü
-            </button>
-            <button
-              onClick={() => setActiveTab('Aktif')}
-              className={`rounded-lg px-4 py-2 text-sm font-bold transition-all ${
-                activeTab === 'Aktif' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Aktif Projeler
-            </button>
-            <button
-              onClick={() => setActiveTab('Tamamlandı')}
-              className={`rounded-lg px-4 py-2 text-sm font-bold transition-all ${
-                activeTab === 'Tamamlandı' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Tamamlananlar
-            </button>
+            {['Tümü', 'Aktif', 'Tamamlandı'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab as any)}
+                className={`relative rounded-lg px-4 py-2 text-sm font-bold transition-all ${
+                  activeTab === tab ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                {activeTab === tab && (
+                  <motion.div
+                    layoutId="activeProjectTab"
+                    className="absolute inset-0 rounded-lg bg-white shadow-sm"
+                    transition={{ type: 'spring', bounce: 0.2, duration: 0.6 }}
+                  />
+                )}
+                <span className="relative z-10">{tab === 'Aktif' ? 'Aktif Projeler' : tab === 'Tamamlandı' ? 'Tamamlananlar' : 'Tümü'}</span>
+              </button>
+            ))}
           </div>
 
           <div className="flex w-fit items-center gap-1 rounded-xl bg-slate-100 p-1">
-            <button
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => setViewMode('cards')}
               className={`flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold transition-all ${
                 viewMode === 'cards' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
@@ -195,8 +201,10 @@ export default function Projects({
             >
               <LayoutGrid className="h-4 w-4" />
               Kartlar
-            </button>
-            <button
+            </motion.button>
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => setViewMode('gantt')}
               className={`flex items-center gap-1 rounded-lg px-3 py-2 text-xs font-bold transition-all ${
                 viewMode === 'gantt' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
@@ -204,7 +212,7 @@ export default function Projects({
             >
               <CalendarDays className="h-4 w-4" />
               Gantt
-            </button>
+            </motion.button>
           </div>
 
           {viewMode === 'gantt' && (
@@ -248,9 +256,86 @@ export default function Projects({
               className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2 pl-10 pr-4 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
-          <button className="rounded-xl border border-slate-200 p-2 text-slate-500 transition-all hover:bg-slate-50">
-            <Filter className="h-5 w-5" />
-          </button>
+          <div className="relative">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className={`rounded-xl border p-2 transition-all ${
+                isFilterOpen || selectedCategory !== 'Tümü'
+                  ? 'border-indigo-200 bg-indigo-50 text-indigo-600'
+                  : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+              }`}
+            >
+              <Filter className="h-5 w-5" />
+            </motion.button>
+
+            <AnimatePresence>
+              {isFilterOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsFilterOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                    className="absolute right-0 top-12 z-20 w-56 rounded-2xl border border-slate-100 bg-white p-2 shadow-xl ring-1 ring-slate-900/5"
+                  >
+                    <div className="max-h-[320px] overflow-y-auto no-scrollbar space-y-4">
+                      <div>
+                        <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Kategori</p>
+                        <div className="space-y-0.5">
+                          {['Tümü', ...Array.from(new Set(projects.map(p => p.category))).filter(Boolean)].map((cat) => (
+                            <button
+                              key={cat}
+                              onClick={() => setSelectedCategory(cat)}
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+                                selectedCategory === cat ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              {cat}
+                              {selectedCategory === cat && <div className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="border-t border-slate-50 pt-3">
+                        <p className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">Yönetici</p>
+                        <div className="space-y-0.5">
+                          {managers.map((m: any) => (
+                            <button
+                              key={typeof m === 'string' ? m : m.id}
+                              onClick={() => setSelectedManagerId(typeof m === 'string' ? m : m.id)}
+                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+                                selectedManagerId === (typeof m === 'string' ? m : m.id) ? 'bg-indigo-50 text-indigo-600' : 'text-slate-600 hover:bg-slate-50'
+                              }`}
+                            >
+                              <span className="truncate">{typeof m === 'string' ? m : m.name}</span>
+                              {selectedManagerId === (typeof m === 'string' ? m : m.id) && <div className="h-1.5 w-1.5 rounded-full bg-indigo-600" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {(selectedCategory !== 'Tümü' || selectedManagerId !== 'Tümü') && (
+                      <div className="mt-2 border-t border-slate-50 p-2">
+                        <button 
+                          onClick={() => {
+                            setSelectedCategory('Tümü');
+                            setSelectedManagerId('Tümü');
+                          }}
+                          className="w-full rounded-xl bg-slate-50 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                        >
+                          Filtreleri Temizle
+                        </button>
+                      </div>
+                    )}
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </div>
 
@@ -258,21 +343,25 @@ export default function Projects({
         {viewMode === 'cards' ? (
           <motion.div
             key="cards-view"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.3 }}
-            className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3"
+            initial="hidden" animate="visible" exit="exit"
+            variants={{ 
+              visible: { transition: { staggerChildren: 0.1 } },
+              exit: { opacity: 0, x: 20, transition: { duration: 0.2 } }
+            }}
+            className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
           >
             {filteredProjects.map((project) => (
               <motion.div
                 layout
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+                variants={{
+                  hidden: { opacity: 0, y: 20 },
+                  visible: { opacity: 1, y: 0, transition: { type: 'spring', stiffness: 100, damping: 15 } }
+                }}
+                whileHover={{ y: -5, boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.04)' }}
                 key={project.id}
-                className="group overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all hover:shadow-md"
+                className="group overflow-hidden rounded-3xl border border-slate-100 bg-white shadow-sm transition-all"
               >
-                <div onClick={() => onProjectClick?.(project)} className="cursor-pointer space-y-4 p-6">
+                <div onClick={() => onProjectClick?.(project)} className="cursor-pointer space-y-2.5 p-4">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
                       <div className="relative">
@@ -292,39 +381,48 @@ export default function Projects({
 
                     {canManageProjects && (
                       <div className="flex items-center gap-1">
-                        <button
+                        <motion.button
+                          whileHover={{ scale: 1.1, backgroundColor: 'rgba(238, 242, 255, 1)' }}
+                          whileTap={{ scale: 0.9 }}
                           onClick={(event) => {
                             event.stopPropagation();
                             onEditProject?.(project);
                           }}
-                          className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-indigo-50 hover:text-indigo-600"
+                          className="rounded-lg p-1.5 text-slate-400 transition-all hover:text-indigo-600"
                         >
                           <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.1, backgroundColor: 'rgba(254, 242, 242, 1)' }}
+                          whileTap={{ scale: 0.9 }}
                           onClick={(event) => {
                             event.stopPropagation();
                             onDeleteProject?.(project);
                           }}
-                          className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-rose-50 hover:text-rose-600"
+                          className="rounded-lg p-1.5 text-slate-400 transition-all hover:text-rose-600"
                         >
                           <Trash2 className="h-4 w-4" />
-                        </button>
-                        <button onClick={(event) => event.stopPropagation()} className="rounded-lg p-1.5 text-slate-400 transition-all hover:bg-slate-50 hover:text-slate-600">
+                        </motion.button>
+                        <motion.button 
+                          whileHover={{ scale: 1.1, backgroundColor: 'rgba(248, 250, 252, 1)' }}
+                          whileTap={{ scale: 0.9 }}
+                          onClick={(event) => event.stopPropagation()} 
+                          className="rounded-lg p-1.5 text-slate-400 transition-all hover:text-slate-600"
+                        >
                           <MoreVertical className="h-4 w-4" />
-                        </button>
+                        </motion.button>
                       </div>
                     )}
                   </div>
 
-                  <p className="h-10 line-clamp-2 text-sm leading-relaxed text-slate-600">{project.description}</p>
+                  <p className="h-9 line-clamp-2 text-[13px] leading-relaxed text-slate-500">{project.description}</p>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs font-bold">
                       <span className="text-slate-500">İlerleme</span>
                       <span className="text-indigo-600">%{project.progress}</span>
                     </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${project.progress}%` }}
@@ -358,7 +456,7 @@ export default function Projects({
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between border-t border-slate-50 bg-slate-50/50 px-6 py-3">
+                <div className="flex items-center justify-between border-t border-slate-50 bg-slate-50/50 px-5 py-2.5">
                   <button onClick={() => onProjectClick?.(project)} className="text-xs font-bold text-indigo-600 transition-colors hover:text-indigo-700">
                     Detayları Gör
                   </button>

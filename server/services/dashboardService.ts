@@ -909,8 +909,8 @@ export const createProject = async (payload: {
     }
 
     // 12. Varsayılan WBS görevleri (opsiyonel)
-    if (payload.createDefaultWbsTasks && payload.selectedWbsTemplate === 'software_development') {
-      await insertDefaultWbsTasks(connection, id, payload.managerId, payload.startDate || null, payload.endDate || null);
+    if (payload.createDefaultWbsTasks) {
+      await insertDefaultWbsTasks(connection, id, payload.managerId, payload.startDate || null, payload.endDate || null, payload.selectedWbsTemplate);
     }
 
     await connection.commit();
@@ -1853,36 +1853,46 @@ const insertDefaultWbsTasks = async (
   managerId: string,
   startDate: string | null,
   endDate: string | null,
+  templateName: string = 'software_development'
 ) => {
-  const template = [
-    { title: 'Gereksinim Analizi', desc: 'Proje gereksinimlerinin belirlenmesi ve analiz edilmesi.', children: [
-      { title: 'Müşteri görüşmeleri', desc: 'Müşteri ile gereksinim toplantılarının yapılması.' },
-      { title: 'Gereksinim dokümantasyonu', desc: 'Toplanan gereksinimlerin belgelenmesi.' },
-      { title: 'Paydaş analizi', desc: 'Proje paydaşlarının belirlenmesi ve analizi.' },
-    ]},
-    { title: 'Tasarım', desc: 'Sistem ve arayüz tasarımlarının hazırlanması.', children: [
-      { title: 'Sistem mimarisi tasarımı', desc: 'Yazılım mimarisinin belirlenmesi.' },
-      { title: 'UI/UX tasarımı', desc: 'Kullanıcı arayüzü ve deneyimi tasarımı.' },
-      { title: 'Veritabanı tasarımı', desc: 'Veri modeli ve veritabanı şemasının tasarlanması.' },
-    ]},
-    { title: 'Geliştirme', desc: 'Yazılım geliştirme sürecinin yürütülmesi.', children: [
-      { title: 'Frontend geliştirme', desc: 'Kullanıcı arayüzünün kodlanması.' },
-      { title: 'Backend geliştirme', desc: 'Sunucu tarafı iş mantığının geliştirilmesi.' },
-      { title: 'API entegrasyonu', desc: 'Servis entegrasyonlarının yapılması.' },
-    ]},
-    { title: 'Test ve Kalite Güvence', desc: 'Kalite kontrol ve test süreçlerinin yürütülmesi.', children: [
-      { title: 'Birim testleri', desc: 'Birim düzeyinde test yazılması ve çalıştırılması.' },
-      { title: 'Entegrasyon testleri', desc: 'Bileşenler arası entegrasyon testleri.' },
-      { title: 'Kullanıcı kabul testleri', desc: 'Son kullanıcı onay testlerinin yapılması.' },
-    ]},
-    { title: 'Dağıtım ve Bakım', desc: 'Yazılımın dağıtılması ve bakımının sağlanması.', children: [
-      { title: 'Test ortamına dağıtım', desc: 'Uygulamanın test ortamına kurulumu.' },
-      { title: 'Üretim ortamına dağıtım', desc: 'Canlı ortama geçiş sürecinin yönetimi.' },
-      { title: 'Bakım ve hata düzeltme', desc: 'Canlı ortamda tespit edilen hataların düzeltilmesi.' },
-    ]},
-  ];
+  const templates: Record<string, any[]> = {
+    software_development: [
+      { title: 'Gereksinim Analizi', desc: 'Proje gereksinimlerinin belirlenmesi ve analiz edilmesi.', children: [
+        { title: 'Müşteri görüşmeleri', desc: 'Müşteri ile gereksinim toplantılarının yapılması.' },
+        { title: 'Gereksinim dokümantasyonu', desc: 'Toplanan gereksinimlerin belgelenmesi.' },
+        { title: 'Paydaş analizi', desc: 'Proje paydaşlarının belirlenmesi ve analizi.' },
+      ]},
+      { title: 'Tasarım', desc: 'Sistem ve arayüz tasarımlarının hazırlanması.', children: [
+        { title: 'Sistem mimarisi tasarımı', desc: 'Yazılım mimarisinin belirlenmesi.' },
+        { title: 'UI/UX tasarımı', desc: 'Kullanıcı arayüzü ve deneyimi tasarımı.' },
+        { title: 'Veritabanı tasarımı', desc: 'Veri modeli ve veritabanı şemasının tasarlanması.' },
+      ]},
+      { title: 'Geliştirme', desc: 'Yazılım geliştirme sürecinin yürütülmesi.', children: [
+        { title: 'Frontend geliştirme', desc: 'Kullanıcı arayüzünün kodlanması.' },
+        { title: 'Backend geliştirme', desc: 'Sunucu tarafı iş mantığının geliştirilmesi.' },
+        { title: 'API entegrasyonu', desc: 'Servis entegrasyonlarının yapılması.' },
+      ]},
+      { title: 'Test ve Kalite Güvence', desc: 'Kalite kontrol ve test süreçlerinin yürütülmesi.', children: [
+        { title: 'Birim testleri', desc: 'Birim düzeyinde test yazılması ve çalıştırılması.' },
+        { title: 'Entegrasyon testleri', desc: 'Bileşenler arası entegrasyon testleri.' },
+        { title: 'Kullanıcı kabul testleri', desc: 'Son kullanıcı onay testlerinin yapılması.' },
+      ]},
+      { title: 'Dağıtım ve Bakım', desc: 'Yazılımın dağıtılması ve bakımının sağlanması.', children: [
+        { title: 'Test ortamına dağıtım', desc: 'Uygulamanın test ortamına kurulumu.' },
+        { title: 'Üretim ortamına dağıtım', desc: 'Canlı ortama geçiş sürecinin yönetimi.' },
+        { title: 'Bakım ve hata düzeltme', desc: 'Canlı ortamda tespit edilen hataların düzeltilmesi.' },
+      ]},
+    ],
+    empty: [
+      { title: 'Analiz ve Planlama', desc: 'Projenin başlangıç analiz ve planlama aşaması.', children: [] },
+      { title: 'Uygulama / Geliştirme', desc: 'Ana uygulama veya geliştirme süreci.', children: [] },
+      { title: 'Kontrol ve Kapanış', desc: 'Son kontroller ve projenin tamamlanması.', children: [] },
+    ]
+  };
 
-  for (const phase of template) {
+  const selectedTemplate = templates[templateName] || templates.software_development;
+
+  for (const phase of selectedTemplate) {
     const parentId = createEntityId('TSK');
     await connection.query(
       `INSERT INTO tasks (id, title, description, parent_task_id, priority, status, start_date, due_date, project_id, comments_count, attachments_count)
@@ -1892,14 +1902,16 @@ const insertDefaultWbsTasks = async (
     await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [parentId, managerId]);
     await connection.query('INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)', [projectId, managerId]);
 
-    for (const child of phase.children) {
-      const childId = createEntityId('TSK');
-      await connection.query(
-        `INSERT INTO tasks (id, title, description, parent_task_id, priority, status, start_date, due_date, project_id, comments_count, attachments_count)
-         VALUES (?, ?, ?, ?, 'Orta', 'Yapılacak', ?, ?, ?, 0, 0)`,
-        [childId, child.title, child.desc, parentId, startDate, endDate, projectId],
-      );
-      await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [childId, managerId]);
+    if (phase.children && phase.children.length > 0) {
+      for (const child of phase.children) {
+        const childId = createEntityId('TSK');
+        await connection.query(
+          `INSERT INTO tasks (id, title, description, parent_task_id, priority, status, start_date, due_date, project_id, comments_count, attachments_count)
+           VALUES (?, ?, ?, ?, 'Orta', 'Yapılacak', ?, ?, ?, 0, 0)`,
+          [childId, child.title, child.desc, parentId, startDate, endDate, projectId],
+        );
+        await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [childId, managerId]);
+      }
     }
   }
 };

@@ -285,18 +285,15 @@ export default function TaskList({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            <AnimatePresence mode="popLayout">
+            <AnimatePresence>
               {visibleTasks.length > 0 ? (
-                visibleTasks.map(({ task, level }, index) => (
+                visibleTasks.map(({ task, level }) => (
                   <motion.tr
                     layout
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, scale: 0.98 }}
-                    transition={{ 
-                      duration: 0.2,
-                      delay: Math.min(index * 0.02, 0.3) 
-                    }}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, transition: { duration: 0.15 } }}
+                    transition={{ duration: 0.2 }}
                     key={task.id}
                     className="group transition-colors hover:bg-slate-50/80"
                   >
@@ -427,8 +424,9 @@ export default function TaskList({
                 ))
               ) : (
                 <motion.tr
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0 }}
                 >
                   <td colSpan={7} className="px-6 py-20 text-center">

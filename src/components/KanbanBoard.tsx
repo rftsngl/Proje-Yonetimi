@@ -93,11 +93,11 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
                 await onMoveTask(draggedTask.id, column.id);
                 setDraggingTaskId(null);
               }}
-              className={`flex min-h-[500px] flex-col gap-4 rounded-2xl bg-slate-100/50 p-4 transition-all ${
-                hoveredColumnId === column.id ? 'ring-2 ring-indigo-200 ring-offset-2 ring-offset-slate-50' : ''
+              className={`flex h-[calc(100vh-220px)] flex-col gap-4 rounded-3xl bg-slate-50/60 p-4 ring-1 ring-slate-100 shadow-[inset_0_2px_4px_rgba(0,0,0,0.02)] transition-all lg:h-[calc(100vh-250px)] ${
+                hoveredColumnId === column.id ? 'ring-2 ring-indigo-300' : ''
               }`}
             >
-              <div className="flex items-center justify-between px-2">
+              <div className="flex items-center justify-between px-2 shrink-0">
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-slate-800">{column.title}</h3>
                   <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs font-bold text-slate-500 shadow-sm">
@@ -148,7 +148,7 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
                 </div>
               </div>
 
-              <div className="space-y-4">
+              <div className="flex-1 overflow-y-auto custom-scrollbar pr-2 space-y-4 pb-6 pt-1">
                 <AnimatePresence mode="popLayout">
                   {columnTasks.map((task) => (
                     <motion.div
@@ -170,9 +170,9 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
                       setDraggingTaskId(null);
                       setHoveredColumnId(null);
                     }}
-                    className={`group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-1 hover:shadow-md ${
+                    className={`group relative rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:border-indigo-200 hover:shadow-md hover:ring-1 hover:ring-indigo-100 ${
                       canMoveTask(task) ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-                    } ${draggingTaskId === task.id ? 'opacity-50' : ''}`}
+                    } ${draggingTaskId === task.id ? 'opacity-50 ring-2 ring-indigo-400 scale-95' : ''}`}
                   >
                     <div className="mb-3 flex items-start justify-between">
                       <span
@@ -298,11 +298,12 @@ export default function KanbanBoard({ tasks, showHeader = true, onAddTask, onTas
 
                 <button
                   onClick={onAddTask}
-                  className="group flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 py-3 text-sm font-medium text-slate-400 transition-all hover:border-indigo-200 hover:bg-white hover:text-indigo-600"
+                  className="group flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-slate-200 bg-transparent py-3.5 text-sm font-bold text-slate-400 transition-all hover:border-indigo-300 hover:bg-indigo-50/50 hover:text-indigo-600"
                 >
                   <Plus className="h-4 w-4 transition-transform group-hover:scale-110" />
-                  Görev Ekle
+                  Yeni Görev Ekle
                 </button>
+
               </div>
             </motion.div>
           );
