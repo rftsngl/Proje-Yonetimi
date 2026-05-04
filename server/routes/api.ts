@@ -37,6 +37,12 @@ import {
   deleteUser,
   updateWorkspaceName,
   updateMemberInfo,
+  getProjectPlanningDetails,
+  getProjectStakeholders,
+  getProjectRequirements,
+  getProjectRisks,
+  getProjectCostItems,
+  getProjectTestItems,
 } from '../services/dashboardService.js';
 import { generateProjectReport } from '../services/aiService.js';
 import { getUserFromToken, loginUser, logoutUser, registerUser, resetPassword } from '../services/authService.js';
@@ -415,14 +421,124 @@ apiRouter.post('/projects', async (req, res, next) => {
       return;
     }
 
-    const { name, description, category, managerId, startDate, endDate, themeColor } = req.body;
+    const body = req.body;
 
-    if (!name || !description || !category || !managerId) {
+    if (!body.name || !body.description || !body.category || !body.managerId) {
       return res.status(400).json({ message: 'Zorunlu proje alanlari eksik.' });
     }
 
-    await createProject({ name, description, category, managerId, startDate, endDate, themeColor }, session.user.id);
+    // Tarih validasyonu
+    if (body.startDate && body.endDate && body.startDate > body.endDate) {
+      return res.status(400).json({ message: 'Başlangıç tarihi bitiş tarihinden sonra olamaz.' });
+    }
+
+    // Risk validasyonu
+    if (Array.isArray(body.risks)) {
+      for (const risk of body.risks) {
+        if (risk.probability < 1 || risk.probability > 5 || risk.impact < 1 || risk.impact > 5) {
+          return res.status(400).json({ message: 'Risk olasılık ve etki değerleri 1-5 aralığında olmalıdır.' });
+        }
+      }
+    }
+
+    // Gereksinim validasyonu
+    if (Array.isArray(body.requirements)) {
+      for (const req2 of body.requirements) {
+        if (!req2.title || !req2.description) {
+          return res.status(400).json({ message: 'Gereksinim başlığı ve açıklaması zorunludur.' });
+        }
+        if (req2.difficulty < 1 || req2.difficulty > 5 || req2.businessValue < 1 || req2.businessValue > 5) {
+          return res.status(400).json({ message: 'Gereksinim zorluk ve değer 1-5 aralığında olmalıdır.' });
+        }
+      }
+    }
+
+    // Paydaş validasyonu
+    if (Array.isArray(body.stakeholders)) {
+      for (const s of body.stakeholders) {
+        if (!s.name || !s.role) {
+          return res.status(400).json({ message: 'Paydaş adı ve rolü zorunludur.' });
+        }
+      }
+    }
+
+    // Fizibilite skoru validasyonu
+    if (body.feasibilityScore != null && (body.feasibilityScore < 0 || body.feasibilityScore > 100)) {
+      return res.status(400).json({ message: 'Fizibilite skoru 0-100 aralığında olmalıdır.' });
+    }
+
+    await createProject(body, session.user.id);
     return res.status(201).json(await getBootstrapData(session.user));
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Proje planlama verileri — GET endpoint'leri
+// ---------------------------------------------------------------------------
+
+apiRouter.get('/projects/:projectId/planning', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    const data = await getProjectPlanningDetails(req.params.projectId, session.user.id);
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.get('/projects/:projectId/stakeholders', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    const data = await getProjectStakeholders(req.params.projectId, session.user.id);
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.get('/projects/:projectId/requirements', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    const data = await getProjectRequirements(req.params.projectId, session.user.id);
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.get('/projects/:projectId/risks', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    const data = await getProjectRisks(req.params.projectId, session.user.id);
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.get('/projects/:projectId/cost-items', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    const data = await getProjectCostItems(req.params.projectId, session.user.id);
+    return res.json(data);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+apiRouter.get('/projects/:projectId/test-items', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+    const data = await getProjectTestItems(req.params.projectId, session.user.id);
+    return res.json(data);
   } catch (error) {
     return next(error);
   }

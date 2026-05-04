@@ -159,6 +159,126 @@ CREATE TABLE IF NOT EXISTS user_settings (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_user_settings_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS project_planning_details (
+  id VARCHAR(32) PRIMARY KEY,
+  project_id VARCHAR(32) NOT NULL,
+  purpose TEXT NULL,
+  problem_statement TEXT NULL,
+  target_users TEXT NULL,
+  project_type VARCHAR(120) NULL,
+  direct_value TEXT NULL,
+  indirect_value TEXT NULL,
+  strategic_alignment TEXT NULL,
+  sustainability_notes TEXT NULL,
+  expected_benefits TEXT NULL,
+  not_doing_impact TEXT NULL,
+  feasibility_score INT NULL,
+  in_scope TEXT NULL,
+  out_of_scope TEXT NULL,
+  assumptions TEXT NULL,
+  \`constraints\` TEXT NULL,
+  acceptance_criteria TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_planning_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS project_stakeholders (
+  id VARCHAR(32) PRIMARY KEY,
+  project_id VARCHAR(32) NOT NULL,
+  name VARCHAR(160) NOT NULL,
+  role VARCHAR(120) NOT NULL,
+  interest ENUM('Düşük', 'Orta', 'Yüksek') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Orta',
+  power ENUM('Düşük', 'Orta', 'Yüksek') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'Orta',
+  expectation TEXT NULL,
+  communication_method VARCHAR(160) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_stakeholders_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS project_requirements (
+  id VARCHAR(32) PRIMARY KEY,
+  project_id VARCHAR(32) NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  description TEXT NOT NULL,
+  type VARCHAR(40) NOT NULL DEFAULT 'İşlevsel',
+  priority VARCHAR(20) NOT NULL DEFAULT 'Must',
+  difficulty INT NOT NULL DEFAULT 3,
+  business_value INT NOT NULL DEFAULT 3,
+  acceptance_criteria TEXT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'Taslak',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_requirements_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS project_risks (
+  id VARCHAR(32) PRIMARY KEY,
+  project_id VARCHAR(32) NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  description TEXT NULL,
+  category VARCHAR(80) NOT NULL,
+  probability INT NOT NULL DEFAULT 1,
+  impact INT NOT NULL DEFAULT 1,
+  score INT NOT NULL DEFAULT 1,
+  priority VARCHAR(20) NOT NULL DEFAULT 'Düşük',
+  mitigation TEXT NULL,
+  contingency TEXT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'Aktif',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_risks_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS project_cost_items (
+  id VARCHAR(32) PRIMARY KEY,
+  project_id VARCHAR(32) NOT NULL,
+  title VARCHAR(180) NOT NULL,
+  category VARCHAR(80) NOT NULL,
+  estimated_cost DECIMAL(12,2) NOT NULL DEFAULT 0,
+  actual_cost DECIMAL(12,2) NOT NULL DEFAULT 0,
+  currency VARCHAR(8) NOT NULL DEFAULT 'TRY',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_cost_items_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS project_test_items (
+  id VARCHAR(32) PRIMARY KEY,
+  project_id VARCHAR(32) NOT NULL,
+  requirement_id VARCHAR(32) NULL,
+  title VARCHAR(180) NOT NULL,
+  test_type VARCHAR(80) NOT NULL,
+  expected_result TEXT NULL,
+  status VARCHAR(40) NOT NULL DEFAULT 'Hazırlanıyor',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_test_items_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS project_communication_plans (
+  id VARCHAR(32) PRIMARY KEY,
+  project_id VARCHAR(32) NOT NULL,
+  meeting_type VARCHAR(120) NOT NULL,
+  frequency VARCHAR(80) NULL,
+  channel VARCHAR(80) NULL,
+  participants TEXT NULL,
+  responsible_user_id VARCHAR(32) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_comm_plans_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS project_deployment_plans (
+  id VARCHAR(32) PRIMARY KEY,
+  project_id VARCHAR(32) NOT NULL,
+  development_environment TEXT NULL,
+  test_environment TEXT NULL,
+  production_environment TEXT NULL,
+  deployment_strategy VARCHAR(40) NULL,
+  data_migration_required BOOLEAN NOT NULL DEFAULT FALSE,
+  user_training_required BOOLEAN NOT NULL DEFAULT FALSE,
+  rollback_plan TEXT NULL,
+  maintenance_notes TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_deploy_plans_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
 `;
 
 const baseSeedStatements = [

@@ -110,3 +110,25 @@ export const getNotificationsPage = (limit: number = 20, beforeCreatedAt?: strin
 
   return api.get<import('../types').NotificationsPageResponse>(`/notifications?${params.toString()}`);
 };
+
+// ---------------------------------------------------------------------------
+// Proje planlama verileri — okuma servisleri
+// ---------------------------------------------------------------------------
+
+export const getProjectPlanning = (projectId: string) =>
+  api.get<import('../types').ProjectPlanningDetails | null>(`/projects/${projectId}/planning`);
+
+export const getProjectStakeholders = (projectId: string) =>
+  api.get<import('../types').ProjectStakeholder[]>(`/projects/${projectId}/stakeholders`);
+
+export const getProjectRequirements = (projectId: string) =>
+  api.get<import('../types').ProjectRequirement[]>(`/projects/${projectId}/requirements`);
+
+export const getProjectRisks = (projectId: string) =>
+  api.get<import('../types').ProjectRisk[]>(`/projects/${projectId}/risks`);
+
+export const getProjectCostItems = (projectId: string) =>
+  api.get<import('../types').ProjectCostItem[]>(`/projects/${projectId}/cost-items`);
+
+export const getProjectTestItems = (projectId: string) =>
+  api.get<import('../types').ProjectTestItem[]>(`/projects/${projectId}/test-items`);

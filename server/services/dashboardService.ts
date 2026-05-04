@@ -754,6 +754,29 @@ export const createProject = async (payload: {
   startDate?: string;
   endDate?: string;
   themeColor?: string;
+  purpose?: string;
+  problemStatement?: string;
+  targetUsers?: string;
+  projectType?: string;
+  directValue?: string;
+  indirectValue?: string;
+  strategicAlignment?: string;
+  sustainabilityNotes?: string;
+  expectedBenefits?: string;
+  notDoingImpact?: string;
+  feasibilityScore?: number;
+  inScope?: string;
+  outOfScope?: string;
+  assumptions?: string;
+  constraints?: string;
+  acceptanceCriteria?: string;
+  stakeholders?: Array<{ name: string; role: string; interest: string; power: string; expectation?: string; communicationMethod?: string }>;
+  requirements?: Array<{ title: string; description: string; type: string; priority: string; difficulty: number; businessValue: number; acceptanceCriteria?: string }>;
+  risks?: Array<{ title: string; description?: string; category: string; probability: number; impact: number; mitigation?: string; contingency?: string }>;
+  costItems?: Array<{ title: string; estimatedCost: number; actualCost?: number; currency: string; category: string }>;
+  testItems?: Array<{ title: string; testType: string; expectedResult?: string }>;
+  createDefaultWbsTasks?: boolean;
+  selectedWbsTemplate?: string;
 }, actorUserId: string) => {
   const id = createEntityId('PRJ');
   const connection = await pool.getConnection();
@@ -784,6 +807,105 @@ export const createProject = async (payload: {
         [createEntityId('EV'), `${payload.name} teslim tarihi`, payload.endDate, 'bg-indigo-100 text-indigo-700 border-indigo-200', 'teslim', id, workspaceId],
       );
     }
+
+    // 5. Planlama detayları
+    const hasPlanningData = payload.purpose || payload.problemStatement || payload.targetUsers ||
+      payload.projectType || payload.directValue || payload.indirectValue ||
+      payload.strategicAlignment || payload.sustainabilityNotes || payload.expectedBenefits ||
+      payload.notDoingImpact || payload.feasibilityScore != null ||
+      payload.inScope || payload.outOfScope || payload.assumptions ||
+      payload.constraints || payload.acceptanceCriteria;
+
+    if (hasPlanningData) {
+      await connection.query(
+        `INSERT INTO project_planning_details (id, project_id, purpose, problem_statement, target_users, project_type,
+         direct_value, indirect_value, strategic_alignment, sustainability_notes, expected_benefits, not_doing_impact,
+         feasibility_score, in_scope, out_of_scope, assumptions, \`constraints\`, acceptance_criteria)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          createEntityId('PPD'), id,
+          payload.purpose || null, payload.problemStatement || null, payload.targetUsers || null, payload.projectType || null,
+          payload.directValue || null, payload.indirectValue || null, payload.strategicAlignment || null,
+          payload.sustainabilityNotes || null, payload.expectedBenefits || null, payload.notDoingImpact || null,
+          payload.feasibilityScore ?? null,
+          payload.inScope || null, payload.outOfScope || null, payload.assumptions || null,
+          payload.constraints || null, payload.acceptanceCriteria || null,
+        ],
+      );
+    }
+
+    // 6. Paydaşlar
+    if (payload.stakeholders?.length) {
+      for (const s of payload.stakeholders) {
+        await connection.query(
+          'INSERT INTO project_stakeholders (id, project_id, name, role, interest, power, expectation, communication_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [createEntityId('PSH'), id, s.name, s.role, s.interest || 'Orta', s.power || 'Orta', s.expectation || null, s.communicationMethod || null],
+        );
+      }
+    }
+
+    // 7. Gereksinimler
+    if (payload.requirements?.length) {
+      for (const r of payload.requirements) {
+        await connection.query(
+          'INSERT INTO project_requirements (id, project_id, title, description, type, priority, difficulty, business_value, acceptance_criteria) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [createEntityId('PRQ'), id, r.title, r.description, r.type || 'İşlevsel', r.priority || 'Must', r.difficulty || 3, r.businessValue || 3, r.acceptanceCriteria || null],
+        );
+      }
+    }
+
+    // 8. Riskler (skor ve öncelik otomatik hesaplanır)
+    if (payload.risks?.length) {
+      for (const risk of payload.risks) {
+        const prob = Math.max(1, Math.min(5, risk.probability || 1));
+        const imp = Math.max(1, Math.min(5, risk.impact || 1));
+        const score = prob * imp;
+        const priority = score >= 17 ? 'Kritik' : score >= 10 ? 'Yüksek' : score >= 5 ? 'Orta' : 'Düşük';
+        await connection.query(
+          'INSERT INTO project_risks (id, project_id, title, description, category, probability, impact, score, priority, mitigation, contingency) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [createEntityId('PRK'), id, risk.title, risk.description || null, risk.category, prob, imp, score, priority, risk.mitigation || null, risk.contingency || null],
+        );
+      }
+    }
+
+    // 9. Bütçe kalemleri
+    if (payload.costItems?.length) {
+      for (const c of payload.costItems) {
+        await connection.query(
+          'INSERT INTO project_cost_items (id, project_id, title, category, estimated_cost, actual_cost, currency) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [createEntityId('PCI'), id, c.title, c.category, c.estimatedCost || 0, c.actualCost || 0, c.currency || 'TRY'],
+        );
+      }
+    }
+
+    // 10. Test öğeleri
+    if (payload.testItems?.length) {
+      for (const t of payload.testItems) {
+        await connection.query(
+          'INSERT INTO project_test_items (id, project_id, title, test_type, expected_result) VALUES (?, ?, ?, ?, ?)',
+          [createEntityId('PTI'), id, t.title, t.testType, t.expectedResult || null],
+        );
+      }
+    }
+
+    // 11. Varsayılan iletişim planı
+    const defaultMeetings = [
+      { type: 'Proje Başlangıç Toplantısı', freq: 'Tek Seferlik', channel: 'Yüz Yüze / Online' },
+      { type: 'Haftalık Durum Toplantısı', freq: 'Haftalık', channel: 'Online' },
+      { type: 'Risk Gözden Geçirme', freq: 'İki Haftada Bir', channel: 'Online' },
+    ];
+    for (const m of defaultMeetings) {
+      await connection.query(
+        'INSERT INTO project_communication_plans (id, project_id, meeting_type, frequency, channel, responsible_user_id) VALUES (?, ?, ?, ?, ?, ?)',
+        [createEntityId('PCP'), id, m.type, m.freq, m.channel, payload.managerId],
+      );
+    }
+
+    // 12. Varsayılan WBS görevleri (opsiyonel)
+    if (payload.createDefaultWbsTasks && payload.selectedWbsTemplate === 'software_development') {
+      await insertDefaultWbsTasks(connection, id, payload.managerId, payload.startDate || null, payload.endDate || null);
+    }
+
     await connection.commit();
   } catch (error) {
     await connection.rollback();
@@ -1712,4 +1834,158 @@ export const updateWorkspaceName = async (actorUserId: string, newName: string) 
     [newName, workspaceId],
   );
   return result.affectedRows > 0;
+};
+
+// ---------------------------------------------------------------------------
+// WBS Varsayılan görev şablonu helper
+// ---------------------------------------------------------------------------
+
+const insertDefaultWbsTasks = async (
+  connection: import('mysql2/promise').PoolConnection,
+  projectId: string,
+  managerId: string,
+  startDate: string | null,
+  endDate: string | null,
+) => {
+  const template = [
+    { title: 'Gereksinim Analizi', desc: 'Proje gereksinimlerinin belirlenmesi ve analiz edilmesi.', children: [
+      { title: 'Müşteri görüşmeleri', desc: 'Müşteri ile gereksinim toplantılarının yapılması.' },
+      { title: 'Gereksinim dokümantasyonu', desc: 'Toplanan gereksinimlerin belgelenmesi.' },
+      { title: 'Paydaş analizi', desc: 'Proje paydaşlarının belirlenmesi ve analizi.' },
+    ]},
+    { title: 'Tasarım', desc: 'Sistem ve arayüz tasarımlarının hazırlanması.', children: [
+      { title: 'Sistem mimarisi tasarımı', desc: 'Yazılım mimarisinin belirlenmesi.' },
+      { title: 'UI/UX tasarımı', desc: 'Kullanıcı arayüzü ve deneyimi tasarımı.' },
+      { title: 'Veritabanı tasarımı', desc: 'Veri modeli ve veritabanı şemasının tasarlanması.' },
+    ]},
+    { title: 'Geliştirme', desc: 'Yazılım geliştirme sürecinin yürütülmesi.', children: [
+      { title: 'Frontend geliştirme', desc: 'Kullanıcı arayüzünün kodlanması.' },
+      { title: 'Backend geliştirme', desc: 'Sunucu tarafı iş mantığının geliştirilmesi.' },
+      { title: 'API entegrasyonu', desc: 'Servis entegrasyonlarının yapılması.' },
+    ]},
+    { title: 'Test ve Kalite Güvence', desc: 'Kalite kontrol ve test süreçlerinin yürütülmesi.', children: [
+      { title: 'Birim testleri', desc: 'Birim düzeyinde test yazılması ve çalıştırılması.' },
+      { title: 'Entegrasyon testleri', desc: 'Bileşenler arası entegrasyon testleri.' },
+      { title: 'Kullanıcı kabul testleri', desc: 'Son kullanıcı onay testlerinin yapılması.' },
+    ]},
+    { title: 'Dağıtım ve Bakım', desc: 'Yazılımın dağıtılması ve bakımının sağlanması.', children: [
+      { title: 'Test ortamına dağıtım', desc: 'Uygulamanın test ortamına kurulumu.' },
+      { title: 'Üretim ortamına dağıtım', desc: 'Canlı ortama geçiş sürecinin yönetimi.' },
+      { title: 'Bakım ve hata düzeltme', desc: 'Canlı ortamda tespit edilen hataların düzeltilmesi.' },
+    ]},
+  ];
+
+  for (const phase of template) {
+    const parentId = createEntityId('TSK');
+    await connection.query(
+      `INSERT INTO tasks (id, title, description, parent_task_id, priority, status, start_date, due_date, project_id, comments_count, attachments_count)
+       VALUES (?, ?, ?, NULL, 'Orta', 'Yapılacak', ?, ?, ?, 0, 0)`,
+      [parentId, phase.title, phase.desc, startDate, endDate, projectId],
+    );
+    await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [parentId, managerId]);
+    await connection.query('INSERT IGNORE INTO project_members (project_id, user_id) VALUES (?, ?)', [projectId, managerId]);
+
+    for (const child of phase.children) {
+      const childId = createEntityId('TSK');
+      await connection.query(
+        `INSERT INTO tasks (id, title, description, parent_task_id, priority, status, start_date, due_date, project_id, comments_count, attachments_count)
+         VALUES (?, ?, ?, ?, 'Orta', 'Yapılacak', ?, ?, ?, 0, 0)`,
+        [childId, child.title, child.desc, parentId, startDate, endDate, projectId],
+      );
+      await connection.query('INSERT INTO task_assignees (task_id, user_id) VALUES (?, ?)', [childId, managerId]);
+    }
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Proje planlama verileri — okuma fonksiyonları
+// ---------------------------------------------------------------------------
+
+export const getProjectPlanningDetails = async (projectId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT ppd.id, ppd.project_id AS projectId, ppd.purpose, ppd.problem_statement AS problemStatement,
+     ppd.target_users AS targetUsers, ppd.project_type AS projectType,
+     ppd.direct_value AS directValue, ppd.indirect_value AS indirectValue,
+     ppd.strategic_alignment AS strategicAlignment, ppd.sustainability_notes AS sustainabilityNotes,
+     ppd.expected_benefits AS expectedBenefits, ppd.not_doing_impact AS notDoingImpact,
+     ppd.feasibility_score AS feasibilityScore,
+     ppd.in_scope AS inScope, ppd.out_of_scope AS outOfScope, ppd.assumptions,
+     ppd.\`constraints\`, ppd.acceptance_criteria AS acceptanceCriteria
+     FROM project_planning_details ppd
+     INNER JOIN projects p ON p.id = ppd.project_id
+     WHERE ppd.project_id = ? AND p.workspace_id = ?`,
+    [projectId, workspaceId],
+  );
+  return rows[0] || null;
+};
+
+export const getProjectStakeholders = async (projectId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT ps.id, ps.project_id AS projectId, ps.name, ps.role, ps.interest, ps.power,
+     ps.expectation, ps.communication_method AS communicationMethod
+     FROM project_stakeholders ps
+     INNER JOIN projects p ON p.id = ps.project_id
+     WHERE ps.project_id = ? AND p.workspace_id = ?
+     ORDER BY ps.created_at`,
+    [projectId, workspaceId],
+  );
+  return rows;
+};
+
+export const getProjectRequirements = async (projectId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT pr.id, pr.project_id AS projectId, pr.title, pr.description, pr.type, pr.priority,
+     pr.difficulty, pr.business_value AS businessValue, pr.acceptance_criteria AS acceptanceCriteria, pr.status
+     FROM project_requirements pr
+     INNER JOIN projects p ON p.id = pr.project_id
+     WHERE pr.project_id = ? AND p.workspace_id = ?
+     ORDER BY pr.created_at`,
+    [projectId, workspaceId],
+  );
+  return rows;
+};
+
+export const getProjectRisks = async (projectId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT pr.id, pr.project_id AS projectId, pr.title, pr.description, pr.category,
+     pr.probability, pr.impact, pr.score, pr.priority, pr.mitigation, pr.contingency, pr.status
+     FROM project_risks pr
+     INNER JOIN projects p ON p.id = pr.project_id
+     WHERE pr.project_id = ? AND p.workspace_id = ?
+     ORDER BY pr.score DESC, pr.created_at`,
+    [projectId, workspaceId],
+  );
+  return rows;
+};
+
+export const getProjectCostItems = async (projectId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT pc.id, pc.project_id AS projectId, pc.title, pc.category,
+     pc.estimated_cost AS estimatedCost, pc.actual_cost AS actualCost, pc.currency
+     FROM project_cost_items pc
+     INNER JOIN projects p ON p.id = pc.project_id
+     WHERE pc.project_id = ? AND p.workspace_id = ?
+     ORDER BY pc.created_at`,
+    [projectId, workspaceId],
+  );
+  return rows;
+};
+
+export const getProjectTestItems = async (projectId: string, actorUserId: string) => {
+  const workspaceId = await getActorWorkspaceId(actorUserId);
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT pt.id, pt.project_id AS projectId, pt.title, pt.test_type AS testType,
+     pt.expected_result AS expectedResult, pt.status
+     FROM project_test_items pt
+     INNER JOIN projects p ON p.id = pt.project_id
+     WHERE pt.project_id = ? AND p.workspace_id = ?
+     ORDER BY pt.created_at`,
+    [projectId, workspaceId],
+  );
+  return rows;
 };

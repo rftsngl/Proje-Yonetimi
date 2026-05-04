@@ -169,6 +169,89 @@ export interface UpdateTaskPayload extends CreateTaskPayload {
   status?: Task['status'];
 }
 
+// ---------------------------------------------------------------------------
+// Project Wizard — Payload helpers
+// ---------------------------------------------------------------------------
+
+export interface CreateProjectStakeholderPayload {
+  name: string;
+  role: string;
+  interest: 'Düşük' | 'Orta' | 'Yüksek';
+  power: 'Düşük' | 'Orta' | 'Yüksek';
+  expectation?: string;
+  communicationMethod?: string;
+}
+
+export interface CreateProjectRequirementPayload {
+  title: string;
+  description: string;
+  type: 'İşlevsel' | 'İşlevsel Olmayan';
+  priority: 'Must' | 'Should' | 'Could' | "Won't";
+  difficulty: number;
+  businessValue: number;
+  acceptanceCriteria?: string;
+}
+
+export type ProjectRiskCategory =
+  | 'Teknik'
+  | 'Planlama'
+  | 'Yönetim'
+  | 'Finansal'
+  | 'Kaynak'
+  | 'Kalite'
+  | 'İletişim'
+  | 'Güvenlik';
+
+export interface CreateProjectRiskPayload {
+  title: string;
+  description?: string;
+  category: ProjectRiskCategory;
+  probability: number;
+  impact: number;
+  mitigation?: string;
+  contingency?: string;
+}
+
+export type ProjectCostCurrency = 'TRY' | 'USD' | 'EUR' | 'GBP' | 'JPY';
+
+export type ProjectCostCategory =
+  | 'Personel'
+  | 'Yazılım Lisansı'
+  | 'Donanım'
+  | 'Sunucu / Hosting'
+  | 'Eğitim'
+  | 'Danışmanlık'
+  | 'Test'
+  | 'Bakım'
+  | 'Diğer';
+
+export interface CreateProjectCostItemPayload {
+  title: string;
+  estimatedCost: number;
+  actualCost?: number;
+  currency: ProjectCostCurrency;
+  category: ProjectCostCategory;
+}
+
+export type ProjectTestType =
+  | 'Birim Testi'
+  | 'Entegrasyon Testi'
+  | 'Sistem Testi'
+  | 'Kullanıcı Kabul Testi'
+  | 'Kullanılabilirlik Testi'
+  | 'Performans Testi'
+  | 'Güvenlik Testi';
+
+export interface CreateProjectTestItemPayload {
+  title: string;
+  testType: ProjectTestType;
+  expectedResult?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Project Wizard — Main payload
+// ---------------------------------------------------------------------------
+
 export interface CreateProjectPayload {
   name: string;
   description: string;
@@ -177,11 +260,132 @@ export interface CreateProjectPayload {
   startDate?: string;
   endDate?: string;
   themeColor?: string;
+
+  // Temel Bilgiler (ek)
+  purpose?: string;
+  problemStatement?: string;
+  targetUsers?: string;
+  projectType?: string;
+
+  // Değer ve Uygunluk
+  directValue?: string;
+  indirectValue?: string;
+  strategicAlignment?: string;
+  sustainabilityNotes?: string;
+  expectedBenefits?: string;
+  notDoingImpact?: string;
+  feasibilityScore?: number;
+
+  // Kapsam
+  inScope?: string;
+  outOfScope?: string;
+  assumptions?: string;
+  constraints?: string;
+  acceptanceCriteria?: string;
+
+  // İlişkili koleksiyonlar
+  stakeholders?: CreateProjectStakeholderPayload[];
+  requirements?: CreateProjectRequirementPayload[];
+  risks?: CreateProjectRiskPayload[];
+  costItems?: CreateProjectCostItemPayload[];
+  testItems?: CreateProjectTestItemPayload[];
+
+  // WBS
+  createDefaultWbsTasks?: boolean;
+  selectedWbsTemplate?: 'software-default' | 'empty';
 }
 
-export interface UpdateProjectPayload extends CreateProjectPayload {
+export interface UpdateProjectPayload extends Omit<CreateProjectPayload,
+  'stakeholders' | 'requirements' | 'risks' | 'costItems' | 'testItems' |
+  'createDefaultWbsTasks' | 'selectedWbsTemplate'
+> {
   progress?: number;
   status?: Project['status'];
+}
+
+// ---------------------------------------------------------------------------
+// Project Wizard — Read models (backend'den dönen veriler)
+// ---------------------------------------------------------------------------
+
+export interface ProjectPlanningDetails {
+  id: string;
+  projectId: string;
+  purpose: string | null;
+  problemStatement: string | null;
+  targetUsers: string | null;
+  projectType: string | null;
+  directValue: string | null;
+  indirectValue: string | null;
+  strategicAlignment: string | null;
+  sustainabilityNotes: string | null;
+  expectedBenefits: string | null;
+  notDoingImpact: string | null;
+  feasibilityScore: number | null;
+  inScope: string | null;
+  outOfScope: string | null;
+  assumptions: string | null;
+  constraints: string | null;
+  acceptanceCriteria: string | null;
+}
+
+export interface ProjectStakeholder {
+  id: string;
+  projectId: string;
+  name: string;
+  role: string;
+  interest: 'Düşük' | 'Orta' | 'Yüksek';
+  power: 'Düşük' | 'Orta' | 'Yüksek';
+  expectation: string | null;
+  communicationMethod: string | null;
+}
+
+export interface ProjectRequirement {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string;
+  type: 'İşlevsel' | 'İşlevsel Olmayan';
+  priority: 'Must' | 'Should' | 'Could' | "Won't";
+  difficulty: number;
+  businessValue: number;
+  acceptanceCriteria: string | null;
+  status: string;
+}
+
+export type ProjectRiskPriority = 'Düşük' | 'Orta' | 'Yüksek' | 'Kritik';
+
+export interface ProjectRisk {
+  id: string;
+  projectId: string;
+  title: string;
+  description: string | null;
+  category: ProjectRiskCategory;
+  probability: number;
+  impact: number;
+  score: number;
+  priority: ProjectRiskPriority;
+  mitigation: string | null;
+  contingency: string | null;
+  status: string;
+}
+
+export interface ProjectCostItem {
+  id: string;
+  projectId: string;
+  title: string;
+  category: ProjectCostCategory;
+  estimatedCost: number;
+  actualCost: number;
+  currency: ProjectCostCurrency;
+}
+
+export interface ProjectTestItem {
+  id: string;
+  projectId: string;
+  title: string;
+  testType: ProjectTestType;
+  expectedResult: string | null;
+  status: string;
 }
 
 export interface CreateCalendarEventPayload {
