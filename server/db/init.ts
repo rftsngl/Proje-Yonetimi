@@ -279,6 +279,22 @@ CREATE TABLE IF NOT EXISTS project_deployment_plans (
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_deploy_plans_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS project_reports (
+  id VARCHAR(32) PRIMARY KEY,
+  user_id VARCHAR(32) NOT NULL,
+  project_id VARCHAR(32) DEFAULT NULL,
+  title VARCHAR(200) NOT NULL,
+  content MEDIUMTEXT DEFAULT NULL,
+  status ENUM('pending', 'completed', 'failed') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  error_message TEXT DEFAULT NULL,
+  workspace_id VARCHAR(32) DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP NULL DEFAULT NULL,
+  CONSTRAINT fk_reports_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_reports_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+  CONSTRAINT fk_reports_workspace FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE SET NULL
+);
 `;
 
 const baseSeedStatements = [

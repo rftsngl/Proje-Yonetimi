@@ -1,6 +1,6 @@
 import { Project, Task, User, ProjectPlanningDetails, ProjectStakeholder, ProjectRequirement, ProjectRisk, ProjectCostItem, ProjectCommunicationPlan, CreateProjectCommunicationPlanPayload, UpdateProjectPayload } from '../types';
 import { resolveAvatarUrl } from '../lib/avatar';
-import { X, Clock, Briefcase, Trash2, Edit2, ExternalLink, Target, BarChart3, UserPlus, AlignLeft, ShieldAlert, Users, LayoutGrid, Wallet, MessageSquare, Plus, Save, Pencil, Check } from 'lucide-react';
+import { X, Clock, Briefcase, Trash2, Edit2, ExternalLink, Target, BarChart3, UserPlus, AlignLeft, ShieldAlert, Users, LayoutGrid, Wallet, MessageSquare, Plus, Save, Pencil, Check, Sparkles, FileText } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -24,13 +24,14 @@ interface ProjectDetailModalProps {
   onOpenWbs?: (project: Project) => void;
   onAddMember?: (project: Project, userId: string) => Promise<void>;
   onGenerateReport?: (projectId: string) => void;
+  onOpenReportHistory?: (projectId: string) => void;
   onUpdateProject?: (projectId: string, payload: UpdateProjectPayload) => Promise<void>;
 }
 
 type TabType = 'overview' | 'tasks' | 'requirements' | 'risks' | 'stakeholders' | 'budget' | 'communications';
 
 export default function ProjectDetailModal({
-  project, isOpen, onClose, users, tasks, onEdit, onDelete, onViewAllTasks, onOpenWbs, onAddMember, onGenerateReport, onUpdateProject,
+  project, isOpen, onClose, users, tasks, onEdit, onDelete, onViewAllTasks, onOpenWbs, onAddMember, onGenerateReport, onOpenReportHistory, onUpdateProject,
 }: ProjectDetailModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('overview');
   const [isAddMemberOpen, setIsAddMemberOpen] = useState(false);
@@ -345,7 +346,10 @@ export default function ProjectDetailModal({
                           )}
                           <div className="space-y-3 border-t border-slate-100 pt-8">
                             <button onClick={() => onGenerateReport?.(project.id)} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-slate-100">
-                              <Briefcase className="h-4 w-4" /> Proje Raporu Al
+                              <Sparkles className="h-4 w-4 text-indigo-500" /> Proje Raporu İste
+                            </button>
+                            <button onClick={() => onOpenReportHistory?.(project.id)} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-slate-600 transition-all hover:bg-slate-100">
+                              <FileText className="h-4 w-4 text-slate-400" /> Geçmiş Raporlar
                             </button>
                             <button onClick={() => onDelete?.(project)} className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-rose-600 transition-all hover:bg-rose-50">
                               <Trash2 className="h-4 w-4" /> Projeyi Sil

@@ -32,7 +32,7 @@ export interface Notification {
   time: string;
   type: 'task' | 'project' | 'mention' | 'system';
   read: boolean;
-  entityType?: 'task' | 'project' | 'calendar' | 'none';
+  entityType?: 'task' | 'project' | 'calendar' | 'report' | 'none';
   entityId?: string | null;
   createdAt?: string;
 }
@@ -46,6 +46,25 @@ export interface NotificationsPageResponse {
   items: Notification[];
   hasMore: boolean;
   nextCursor?: NotificationCursor;
+}
+
+export type ReportStatus = 'pending' | 'completed' | 'failed';
+
+export interface ReportListItem {
+  id: string;
+  title: string;
+  status: ReportStatus;
+  projectId: string | null;
+  projectName: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  createdByName: string;
+  createdByAvatar: string;
+}
+
+export interface ReportDetail extends ReportListItem {
+  content: string | null;
+  errorMessage: string | null;
 }
 
 export interface TaskComment {

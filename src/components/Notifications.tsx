@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Notification } from '../types';
-import { Bell, CheckCircle2, Clock, MessageSquare, Briefcase, MoreHorizontal, Settings, Trash2, Filter, X } from 'lucide-react';
+import { Bell, CheckCircle2, Clock, MessageSquare, Briefcase, MoreHorizontal, Settings, Trash2, Filter, X, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import ConfirmModal from './ConfirmModal';
 
@@ -43,7 +43,10 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
     return () => document.removeEventListener('click', handleOutsideClick);
   }, []);
 
-  const getIcon = (type: string) => {
+  const getIcon = (type: string, entityType?: string) => {
+    if (entityType === 'report') {
+      return <Sparkles className="h-5 w-5 text-indigo-500" />;
+    }
     switch (type) {
       case 'task':
         return <CheckCircle2 className="h-5 w-5 text-indigo-500" />;
@@ -152,7 +155,7 @@ export default function Notifications({ notifications, onReadAll, onDelete, onDe
             >
               {!notification.read && <div className="absolute bottom-0 left-0 top-0 w-1 bg-indigo-500" />}
 
-              <div className={`flex-shrink-0 rounded-2xl p-3 ${getBg(notification.type)}`}>{getIcon(notification.type)}</div>
+              <div className={`flex-shrink-0 rounded-2xl p-3 ${getBg(notification.type)}`}>{getIcon(notification.type, notification.entityType)}</div>
 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">

@@ -59,6 +59,12 @@ import {
   addProjectCostItem,
   updateProjectCostItem,
   deleteProjectCostItem,
+  createReportRequest,
+  completeReport,
+  failReport,
+  getUserReports,
+  getReportById,
+  deleteReport,
 } from '../services/dashboardService.js';
 import { generateProjectReport, generateProjectPlanning } from '../services/aiService.js';
 import { getUserFromToken, loginUser, logoutUser, registerUser, resetPassword } from '../services/authService.js';
@@ -194,36 +200,81 @@ apiRouter.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
-apiRouter.get('/reports/projects', async (req, res, next) => {
-  try {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.split(' ')[1];
-    if (!token) return res.status(401).json({ message: 'Yetkisiz erişim' });
+// ---------------------------------------------------------------------------
+// Rapor Yönetimi — Arka Plan Üretimi
+// ---------------------------------------------------------------------------
 
-    const authResult = await getUserFromToken(token);
-    if (!authResult || !authResult.user) return res.status(401).json({ message: 'Yetkisiz erişim' });
-    
-    const report = await generateProjectReport({ workspaceId: authResult.user.workspaceId });
-    res.json({ report });
+// Yeni rapor isteği oluştur (arka planda AI üretimi başlatır)
+apiRouter.post('/reports', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    const { projectId } = req.body;
+    const reportResult = await createReportRequest(session.user.id, session.user.workspaceId, projectId);
+
+    // Arka planda AI rapor üretimi (fire-and-forget)
+    (async () => {
+      try {
+        const aiContent = await generateProjectReport({
+          projectId: projectId || undefined,
+          workspaceId: session.user.workspaceId,
+        });
+        await completeReport(reportResult.id, aiContent, session.user.id);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Rapor oluşturulurken bilinmeyen bir hata oluştu.';
+        await failReport(reportResult.id, errorMsg).catch(console.error);
+      }
+    })().catch(console.error);
+
+    return res.status(202).json(reportResult);
   } catch (error) {
-    next(error);
+    return next(error);
   }
 });
 
-apiRouter.get('/reports/projects/:projectId', async (req, res, next) => {
+// Kullanıcının raporlarını listele
+apiRouter.get('/reports', async (req, res, next) => {
   try {
-    const authHeader = req.headers.authorization;
-    const token = authHeader?.split(' ')[1];
-    if (!token) return res.status(401).json({ message: 'Yetkisiz erişim' });
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
 
-    const authResult = await getUserFromToken(token);
-    if (!authResult || !authResult.user) return res.status(401).json({ message: 'Yetkisiz erişim' });
-    
-    const { projectId } = req.params;
-    const report = await generateProjectReport({ projectId, workspaceId: authResult.user.workspaceId });
-    res.json({ report });
+    const reports = await getUserReports(session.user.id, session.user.role, session.user.workspaceId);
+    return res.json({ items: reports });
   } catch (error) {
-    next(error);
+    return next(error);
+  }
+});
+
+// Tek rapor detayı
+apiRouter.get('/reports/:reportId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    const report = await getReportById(req.params.reportId, session.user.id, session.user.role, session.user.workspaceId);
+    if (!report) return res.status(404).json({ message: 'Rapor bulunamadı veya erişim yetkiniz yok.' });
+    return res.json(report);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+// Rapor sil (sadece Admin)
+apiRouter.delete('/reports/:reportId', async (req, res, next) => {
+  try {
+    const session = await getAuthorizedContext(req, res);
+    if (!session) return;
+
+    if (session.user.role !== 'Admin') {
+      return res.status(403).json({ message: 'Rapor silme yetkisi sadece Admin kullanıcılara aittir.' });
+    }
+
+    const deleted = await deleteReport(req.params.reportId, session.user.workspaceId);
+    if (!deleted) return res.status(404).json({ message: 'Rapor bulunamadı.' });
+    return res.json({ ok: true });
+  } catch (error) {
+    return next(error);
   }
 });
 

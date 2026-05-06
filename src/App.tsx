@@ -52,8 +52,9 @@ import {
   getNotificationsPage,
 } from './services/dashboard';
 import { clearStoredAuthToken, getStoredAuthToken } from './services/session';
-import { getGlobalReport, getProjectReport } from './services/ai';
+import { requestReport, getReportDetail } from './services/ai';
 import ReportModal from './components/ReportModal';
+import ReportHistory from './components/ReportHistory';
 import {
   AppBootstrap,
   AppRole,
@@ -135,23 +136,49 @@ export default function App() {
   };
 
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  const [reportContent, setReportContent] = useState<string | null>(null);
+  const [reportDetail, setReportDetail] = useState<import('./types').ReportDetail | null>(null);
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
-  const [reportTitle, setReportTitle] = useState('Yapay Zeka Analizi');
+  const [isReportHistoryOpen, setIsReportHistoryOpen] = useState(false);
+  const [reportHistoryFilterProjectId, setReportHistoryFilterProjectId] = useState<string | null>(null);
 
   const handleGenerateReport = async (projectId?: string) => {
+    try {
+      await requestReport(projectId);
+
+      // Toast göster
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      setActiveToast({
+        id: Date.now(),
+        message: '📊 Rapor isteğiniz alındı',
+        subMessage: 'Hazır olduğunda bildirim alacaksınız.',
+      });
+      toastTimeoutRef.current = setTimeout(() => setActiveToast(null), 4000);
+
+      // Bildirimleri yenile
+      await refreshData();
+    } catch (err) {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+      setActiveToast({
+        id: Date.now(),
+        message: 'Rapor isteği gönderilemedi',
+        subMessage: err instanceof Error ? err.message : 'Bilinmeyen hata.',
+      });
+      toastTimeoutRef.current = setTimeout(() => setActiveToast(null), 4000);
+    }
+  };
+
+  const handleViewReport = async (reportId: string) => {
     setIsReportModalOpen(true);
     setIsReportLoading(true);
     setReportError(null);
-    setReportContent(null);
-    setReportTitle(projectId ? 'Proje Detay Raporu' : 'Genel Proje Raporu');
+    setReportDetail(null);
 
     try {
-      const report = projectId ? await getProjectReport(projectId) : await getGlobalReport();
-      setReportContent(report);
+      const detail = await getReportDetail(reportId);
+      setReportDetail(detail);
     } catch (err) {
-      setReportError(err instanceof Error ? err.message : 'Rapor alınırken bilinmeyen bir hata oluştu.');
+      setReportError(err instanceof Error ? err.message : 'Rapor detayı alınamadı.');
     } finally {
       setIsReportLoading(false);
     }
@@ -734,6 +761,8 @@ export default function App() {
       const p = data.projects.find(p => p.id === notification.entityId) || null;
       setSelectedProject(p);
       setIsProjectDetailModalOpen(true);
+    } else if (notification.entityType === 'report' && notification.entityId) {
+      handleViewReport(notification.entityId);
     }
   };
 
@@ -743,6 +772,9 @@ export default function App() {
     }
     if (notification.entityType === 'project' && notification.entityId) {
       return data.projects.some((p) => p.id === notification.entityId);
+    }
+    if (notification.entityType === 'report' && notification.entityId) {
+      return true; // Rapor varlığı sunucudan sorgulanacak
     }
     return false;
   };
@@ -1294,6 +1326,10 @@ export default function App() {
         onOpenWbs={handleOpenProjectWbs}
         onAddMember={canManageTeam ? handleAddProjectMember : undefined}
         onGenerateReport={(projectId) => handleGenerateReport(projectId)}
+        onOpenReportHistory={(projectId) => {
+          setReportHistoryFilterProjectId(projectId);
+          setIsReportHistoryOpen(true);
+        }}
         onUpdateProject={canManageProjects ? handleUpdateProjectInline : undefined}
       />
 
@@ -1342,10 +1378,21 @@ export default function App() {
       <ReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
-        reportContent={reportContent}
+        report={reportDetail}
         isLoading={isReportLoading}
         error={reportError}
-        title={reportTitle}
+        onOpenHistory={() => {
+          setReportHistoryFilterProjectId(reportDetail?.projectId || null);
+          setIsReportHistoryOpen(true);
+        }}
+      />
+
+      <ReportHistory
+        isOpen={isReportHistoryOpen}
+        onClose={() => setIsReportHistoryOpen(false)}
+        onViewReport={handleViewReport}
+        isAdmin={data.currentUser.role === 'Admin'}
+        filterProjectId={reportHistoryFilterProjectId}
       />
       </Layout>
 

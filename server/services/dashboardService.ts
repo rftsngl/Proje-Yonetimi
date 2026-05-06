@@ -2288,3 +2288,180 @@ export const deleteProjectCostItem = async (costItemId: string, actorUserId: str
     [costItemId, workspaceId],
   );
 };
+
+// ---------------------------------------------------------------------------
+// Rapor İşlemleri (Report CRUD)
+// ---------------------------------------------------------------------------
+
+export const createReportRequest = async (
+  userId: string,
+  workspaceId: string,
+  projectId?: string,
+) => {
+  const id = createEntityId('RPT');
+
+  // Proje adı al (varsa)
+  let projectName = '';
+  if (projectId) {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      'SELECT name FROM projects WHERE id = ? AND workspace_id = ? LIMIT 1',
+      [projectId, workspaceId],
+    );
+    if (!rows.length) throw new Error('Proje bulunamadı.');
+    projectName = rows[0].name as string;
+  }
+
+  const title = projectId ? `${projectName} — Detay Raporu` : 'Genel Proje Raporu';
+
+  await pool.query(
+    `INSERT INTO project_reports (id, user_id, project_id, title, status, workspace_id)
+     VALUES (?, ?, ?, ?, 'pending', ?)`,
+    [id, userId, projectId || null, title, workspaceId],
+  );
+
+  // "Rapor isteğiniz alındı" bildirimi
+  await pool.query(
+    'INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [
+      createEntityId('NTF'),
+      userId,
+      '📊 Rapor Hazırlanıyor',
+      `"${title}" raporu arka planda oluşturuluyor. Hazır olduğunda bildirim alacaksınız.`,
+      'system',
+      'report',
+      id,
+    ],
+  );
+
+  return { id, title, status: 'pending' as const };
+};
+
+export const completeReport = async (reportId: string, content: string, userId: string) => {
+  await pool.query(
+    `UPDATE project_reports SET content = ?, status = 'completed', completed_at = NOW() WHERE id = ?`,
+    [content, reportId],
+  );
+
+  // Rapor başlığını al
+  const [rows] = await pool.query<RowDataPacket[]>('SELECT title FROM project_reports WHERE id = ? LIMIT 1', [reportId]);
+  const title = rows[0]?.title || 'Rapor';
+
+  // "Rapor hazır" bildirimi
+  await pool.query(
+    'INSERT INTO notifications (id, user_id, title, description, type, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [
+      createEntityId('NTF'),
+      userId,
+      '✅ Raporunuz Hazır',
+      `"${title}" raporu başarıyla oluşturuldu. Tıklayarak görüntüleyebilirsiniz.`,
+      'system',
+      'report',
+      reportId,
+    ],
+  );
+};
+
+export const failReport = async (reportId: string, errorMessage: string) => {
+  await pool.query(
+    `UPDATE project_reports SET status = 'failed', error_message = ?, completed_at = NOW() WHERE id = ?`,
+    [errorMessage, reportId],
+  );
+};
+
+/**
+ * Rapor listesi — erişim kuralları:
+ * - Admin'in oluşturduğu raporlar → herkese görünür
+ * - Normal kullanıcının raporları → sadece kendisi + adminler
+ */
+export const getUserReports = async (userId: string, userRole: string, workspaceId: string) => {
+  const isAdmin = userRole === 'Admin';
+
+  let query: string;
+  let params: any[];
+
+  if (isAdmin) {
+    // Admin her şeyi görebilir (workspace dahilinde)
+    query = `
+      SELECT r.id, r.title, r.status, r.project_id AS projectId, r.created_at AS createdAt,
+             r.completed_at AS completedAt, p.name AS projectName, u.name AS createdByName, u.avatar AS createdByAvatar
+      FROM project_reports r
+      LEFT JOIN projects p ON p.id = r.project_id
+      LEFT JOIN users u ON u.id = r.user_id
+      WHERE r.workspace_id = ?
+      ORDER BY r.created_at DESC
+    `;
+    params = [workspaceId];
+  } else {
+    // Normal kullanıcı: kendi raporları + admin'lerin oluşturduğu raporlar
+    query = `
+      SELECT r.id, r.title, r.status, r.project_id AS projectId, r.created_at AS createdAt,
+             r.completed_at AS completedAt, p.name AS projectName, u.name AS createdByName, u.avatar AS createdByAvatar
+      FROM project_reports r
+      LEFT JOIN projects p ON p.id = r.project_id
+      LEFT JOIN users u ON u.id = r.user_id
+      WHERE r.workspace_id = ?
+        AND (r.user_id = ? OR u.role = 'Admin')
+      ORDER BY r.created_at DESC
+    `;
+    params = [workspaceId, userId];
+  }
+
+  const [rows] = await pool.query<RowDataPacket[]>(query, params);
+  return rows.map((r) => ({
+    id: r.id as string,
+    title: r.title as string,
+    status: r.status as string,
+    projectId: (r.projectId as string) || null,
+    projectName: (r.projectName as string) || null,
+    createdAt: r.createdAt as string,
+    completedAt: (r.completedAt as string) || null,
+    createdByName: (r.createdByName as string) || '',
+    createdByAvatar: (r.createdByAvatar as string) || '',
+  }));
+};
+
+export const getReportById = async (reportId: string, userId: string, userRole: string, workspaceId: string) => {
+  const [rows] = await pool.query<RowDataPacket[]>(
+    `SELECT r.id, r.title, r.content, r.status, r.project_id AS projectId, r.error_message AS errorMessage,
+            r.created_at AS createdAt, r.completed_at AS completedAt, r.user_id AS reportUserId,
+            p.name AS projectName, u.name AS createdByName, u.avatar AS createdByAvatar, u.role AS creatorRole
+     FROM project_reports r
+     LEFT JOIN projects p ON p.id = r.project_id
+     LEFT JOIN users u ON u.id = r.user_id
+     WHERE r.id = ? AND r.workspace_id = ?
+     LIMIT 1`,
+    [reportId, workspaceId],
+  );
+
+  if (!rows.length) return null;
+
+  const row = rows[0];
+  const isAdmin = userRole === 'Admin';
+  const isOwner = row.reportUserId === userId;
+  const creatorIsAdmin = row.creatorRole === 'Admin';
+
+  // Erişim kontrolü: admin her şeyi görebilir, normal kullanıcı sadece kendi + admin raporları
+  if (!isAdmin && !isOwner && !creatorIsAdmin) return null;
+
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    content: (row.content as string) || null,
+    status: row.status as string,
+    projectId: (row.projectId as string) || null,
+    projectName: (row.projectName as string) || null,
+    errorMessage: (row.errorMessage as string) || null,
+    createdAt: row.createdAt as string,
+    completedAt: (row.completedAt as string) || null,
+    createdByName: (row.createdByName as string) || '',
+    createdByAvatar: (row.createdByAvatar as string) || '',
+  };
+};
+
+export const deleteReport = async (reportId: string, workspaceId: string) => {
+  const [result] = await pool.query<ResultSetHeader>(
+    'DELETE FROM project_reports WHERE id = ? AND workspace_id = ?',
+    [reportId, workspaceId],
+  );
+  return result.affectedRows > 0;
+};
